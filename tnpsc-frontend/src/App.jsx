@@ -1,46 +1,55 @@
-import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useParams,
+  useNavigate,
+} from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchMe } from "./store/slices/authSlice";
+import { loadExam } from "./store/slices/examSlice";
 
-// Pages
-import LoginPage from "./pages/LoginPage";
-import RegisterPage from "./pages/RegisterPage";
-import TestListPage from "./pages/TestListPage";
-import AdminPage from "./pages/AdminPage";
+// ── Pages ─────────────────────────────────────────────────────────────────────
+import LoginPage           from "./pages/LoginPage";
+import RegisterPage        from "./pages/RegisterPage";
+import TestListPage        from "./pages/TestListPage";
+import AdminPage           from "./pages/AdminPage";
+import CreateTestPage      from "./pages/CreateTestPage";
+import LeaderboardPage     from "./pages/LeaderboardPage";
+import StudyMaterialsPage  from "./pages/StudyMaterialsPage";
+import SyllabusPage        from "./pages/SyllabusPage";
 
-// Components
-import Navbar from "./components/common/Navbar";
-import DynamicQuizEngine from "./components/quiz/DynamicQuizEngine";
-import ResultScreen from "./components/quiz/ResultScreen";
-import AnalyticsDashboard from "./components/analytics/AnalyticsDashboard";
+// ── Components ────────────────────────────────────────────────────────────────
+import Navbar              from "./components/common/Navbar";
+import DynamicQuizEngine   from "./components/quiz/DynamicQuizEngine";
+import ResultScreen        from "./components/quiz/ResultScreen";
+import AnalyticsDashboard  from "./components/analytics/AnalyticsDashboard";
 
-// ── Dashboard page (inline, thin wrapper around AnalyticsDashboard) ───────────
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 const DashboardPage = () => (
   <div className="min-h-screen bg-gray-50">
     <AnalyticsDashboard />
   </div>
 );
 
-// ── Exam page wrapper ─────────────────────────────────────────────────────────
-import { useParams, useNavigate } from "react-router-dom";
-import { useDispatch as useD } from "react-redux";
-import { loadExam } from "./store/slices/examSlice";
-import { useEffect as useE, useState as useS } from "react";
-
+// ─── Exam Page ────────────────────────────────────────────────────────────────
 const ExamPage = () => {
   const { id } = useParams();
-  const dispatch = useD();
+  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { status, result } = useSelector((s) => s.exam);
-  const [loading, setLoading] = useS(true);
+  const { status } = useSelector((s) => s.exam);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
 
-  useE(() => {
+  useEffect(() => {
     dispatch(loadExam(id))
       .unwrap()
-      .catch(() => navigate("/tests"))
+      .catch((err) => setError(err?.message || "Failed to load exam"))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, dispatch]);
 
   if (loading) {
     return (
@@ -53,22 +62,30 @@ const ExamPage = () => {
     );
   }
 
-  if (status === "completed" && result) {
-    return <Navigate to={`/results/${result.attemptId}`} replace />;
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-4">
+        <p className="text-red-500">{error}</p>
+        <button
+          onClick={() => navigate("/tests")}
+          className="px-4 py-2 bg-primary text-white rounded-lg text-sm"
+        >
+          Back to Tests
+        </button>
+      </div>
+    );
   }
 
   return <DynamicQuizEngine />;
 };
 
-// ── Results page wrapper ──────────────────────────────────────────────────────
+// ─── Results Page ─────────────────────────────────────────────────────────────
 const ResultsPage = () => {
-  const { attemptId } = useParams();
   const { result } = useSelector((s) => s.exam);
 
-  // If navigated directly without state, result may be null — show loading/redirect
   if (!result) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-3">
         <p className="text-gray-400 text-sm">Loading results…</p>
       </div>
     );
@@ -81,7 +98,7 @@ const ResultsPage = () => {
   );
 };
 
-// ── Protected Route ───────────────────────────────────────────────────────────
+// ─── Protected Route ──────────────────────────────────────────────────────────
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useSelector((s) => s.auth);
   const location = useLocation();
@@ -101,7 +118,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// ── Admin Route ───────────────────────────────────────────────────────────────
+// ─── Admin Route ──────────────────────────────────────────────────────────────
 const AdminRoute = ({ children }) => {
   const { isAuthenticated, loading, user } = useSelector((s) => s.auth);
   const location = useLocation();
@@ -125,7 +142,7 @@ const AdminRoute = ({ children }) => {
   return children;
 };
 
-// ── Layout with Navbar ────────────────────────────────────────────────────────
+// ─── Layout ───────────────────────────────────────────────────────────────────
 const Layout = ({ children }) => (
   <div className="min-h-screen flex flex-col bg-gray-50">
     <Navbar />
@@ -133,32 +150,16 @@ const Layout = ({ children }) => (
   </div>
 );
 
-// ── App Initialiser ───────────────────────────────────────────────────────────
-const AppInitialiser = () => {
-  const dispatch = useDispatch();
-
-  useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (token) {
-      dispatch(fetchMe());
-    }
-  }, [dispatch]);
-
-  return null;
-};
-
-// ── Toast Container (reads from ui.toasts) ────────────────────────────────────
+// ─── Toast Container ──────────────────────────────────────────────────────────
 const ToastContainer = () => {
-  const toasts = useSelector((s) => s.ui.toasts);
-
-  if (!toasts?.length) return null;
+  const toasts = useSelector((s) => s.ui?.toasts || []);
 
   return (
     <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`px-4 py-3 rounded-xl border shadow-xl text-sm font-medium pointer-events-auto animate-fade-in max-w-sm ${
+          className={`px-4 py-3 rounded-xl border shadow-xl text-sm font-medium pointer-events-auto max-w-sm animate-fade-in ${
             toast.type === "error"
               ? "bg-red-50 border-red-200 text-red-700"
               : toast.type === "warning"
@@ -173,89 +174,73 @@ const ToastContainer = () => {
   );
 };
 
-// ── Root App ──────────────────────────────────────────────────────────────────
-const App = () => {
-  return (
-   <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AppInitialiser />
-      <ToastContainer />
-      <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-
-        {/* Protected routes with Navbar */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Layout>
-                <Navigate to="/dashboard" replace />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Layout>
-                <DashboardPage />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/tests"
-          element={
-            <ProtectedRoute>
-              <Layout>
-                <TestListPage />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Exam — no Navbar during exam */}
-        <Route
-          path="/exam/:id"
-          element={
-            <ProtectedRoute>
-              <ExamPage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/results/:attemptId"
-          element={
-            <ProtectedRoute>
-              <Layout>
-                <ResultsPage />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Admin route */}
-        <Route
-          path="/admin"
-          element={
-            <AdminRoute>
-              <Layout>
-                <AdminPage />
-              </Layout>
-            </AdminRoute>
-          }
-        />
-
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
+// ─── App Init ─────────────────────────────────────────────────────────────────
+const AppInitialiser = () => {
+  const dispatch = useDispatch();
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (token) dispatch(fetchMe());
+  }, [dispatch]);
+  return null;
 };
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
+const App = () => (
+  <BrowserRouter>
+    <AppInitialiser />
+    <ToastContainer />
+    <Routes>
+      {/* Public */}
+      <Route path="/login"    element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+
+      {/* Protected with Navbar */}
+      <Route path="/" element={
+        <ProtectedRoute><Layout><Navigate to="/dashboard" replace /></Layout></ProtectedRoute>
+      } />
+
+      <Route path="/dashboard" element={
+        <ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>
+      } />
+
+      <Route path="/tests" element={
+        <ProtectedRoute><Layout><TestListPage /></Layout></ProtectedRoute>
+      } />
+
+      <Route path="/leaderboard" element={
+        <ProtectedRoute><Layout><LeaderboardPage /></Layout></ProtectedRoute>
+      } />
+
+      <Route path="/materials" element={
+        <ProtectedRoute><Layout><StudyMaterialsPage /></Layout></ProtectedRoute>
+      } />
+
+      <Route path="/syllabus" element={
+        <ProtectedRoute><Layout><SyllabusPage /></Layout></ProtectedRoute>
+      } />
+
+      {/* Exam — no Navbar */}
+      <Route path="/exam/:id" element={
+        <ProtectedRoute><ExamPage /></ProtectedRoute>
+      } />
+
+      <Route path="/results/:attemptId" element={
+        <ProtectedRoute><Layout><ResultsPage /></Layout></ProtectedRoute>
+      } />
+
+      {/* Admin */}
+      <Route path="/admin" element={
+        <AdminRoute><Layout><AdminPage /></Layout></AdminRoute>
+      } />
+
+      <Route path="/admin/create-test" element={
+        <AdminRoute><Layout><CreateTestPage /></Layout></AdminRoute>
+      } />
+
+      {/* Catch-all */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  </BrowserRouter>
+);
 
 export default App;

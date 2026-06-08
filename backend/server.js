@@ -13,7 +13,7 @@ const analyticsRoutes  = require('./routes/analytics.routes');
 const adminRoutes      = require('./routes/admin.routes');
 const paymentRoutes    = require('./routes/payment.routes');
 const syllabusRoutes   = require('./routes/syllabus.routes');
-
+const materialRoutes = require('./routes/studyMaterial.routes');
 const { errorHandler } = require('./middlewares/error.middleware');
 
 const app = express();
@@ -29,6 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
 app.use('/api/', limiter);
 
+app.use('/api/materials', materialRoutes);
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth',      authRoutes);
 app.use('/api/tests',     testRoutes);

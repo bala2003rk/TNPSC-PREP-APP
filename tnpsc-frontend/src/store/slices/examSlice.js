@@ -1,71 +1,194 @@
-// ════════════════════════════════════════════════════════════════════════════
-// examSlice.js
-// ════════════════════════════════════════════════════════════════════════════
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../utils/api';
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import api from "../../utils/api";
 
-export const startExam = createAsyncThunk('exam/start', async (examId, { rejectWithValue }) => {
-  try {
-    const { data } = await api.post(`/tests/${examId}/start`);
-    return data;
-  } catch (err) { return rejectWithValue(err.response?.data?.message); }
-});
+// ── Thunks ────────────────────────────────────────────────────────────────────
 
-export const submitExam = createAsyncThunk('exam/submit', async (payload, { rejectWithValue }) => {
-  try {
-    const { data } = await api.post(`/tests/${payload.examId}/submit`, payload);
-    return data.attempt;
-  } catch (err) { return rejectWithValue(err.response?.data?.message); }
-});
+/**
+ * loadExam — POST /api/tests/:examId/start
+ * Returns { attempt, questions, duration }
+ */
+export const loadExam = createAsyncThunk(
+  "exam/loadExam",
+  async (examId, { rejectWithValue }) => {
+    try {
+      const res = await api.post(`/tests/${examId}/start`);
+      const data = res.data?.data || res.data;
+      return {
+        examId,
+        attemptId: data.attempt?._id || data.attemptId,
+        questions: data.questions || [],
+        duration:  data.duration  || data.attempt?.duration || 90,
+      };
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || "Failed to start exam");
+    }
+  }
+);
 
+/**
+ * submitExam — POST /api/tests/:examId/submit
+ * Builds answers array from Redux state
+ */
+export const submitExam = createAsyncThunk(
+  "exam/submitExam",
+  async (_, { getState, rejectWithValue }) => {
+    try {
+      const { exam } = getState();
+      const { examId, attemptId, answers, flagged, questions, startTime } = exam;
+
+      // Build answers array expected by backend
+      const answersArray = questions.map((q, idx) => ({
+        questionId:     q._id,
+        selectedOption: answers[idx] ?? null,   // 'A'|'B'|'C'|'D'|null
+        isFlagged:      flagged.includes(idx),
+        timeTaken:      0, // per-question timer not tracked; use 0
+      }));
+
+      const totalTimeTaken = startTime
+        ? Math.floor((Date.now() - startTime) / 1000)
+        : 0;
+
+      const res = await api.post(`/tests/${examId}/submit`, {
+        attemptId,
+        answers:   answersArray,
+        timeTaken: totalTimeTaken,
+      });
+
+      return res.data?.data || res.data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || "Failed to submit exam");
+    }
+  }
+);
+
+// ── Slice ─────────────────────────────────────────────────────────────────────
 const examSlice = createSlice({
-  name: 'exam',
+  name: "exam",
   initialState: {
-    currentExam:    null,
-    currentAttempt: null,
-    questions:      [],
-    answers:        {},   // { questionId: { selectedOption, timeTaken, isFlagged } }
-    flagged:        {},   // { questionId: bool }
-    currentIndex:   0,
-    timeRemaining:  0,
-    status:         'idle', // idle | loading | active | submitting | completed
-    result:         null,
-    error:          null,
+    // Exam metadata
+    examId:       null,
+    attemptId:    null,
+    startTime:    null,
+
+    // Questions & answers
+    questions:    [],
+    // answers: { [questionIndex]: 'A'|'B'|'C'|'D'|null }
+    answers:      {},
+    flagged:      [],      // array of question indices
+    currentIndex: 0,
+
+    // Timer
+    timeRemaining: 0,      // seconds
+
+    // Lifecycle
+    status: "idle",        // idle | loading | in_progress | submitting | submitted | error
+
+    // Result
+    result: null,
+
+    // Error
+    error: null,
   },
   reducers: {
-    answerQuestion(state, { payload: { questionId, selectedOption } }) {
-      state.answers[questionId] = { ...(state.answers[questionId] || {}), selectedOption };
+    // Select an answer for the current question
+    answerQuestion: (state, { payload }) => {
+      const { questionIndex, selectedOption } = payload;
+      // Toggle off if same option clicked again
+      if (state.answers[questionIndex] === selectedOption) {
+        delete state.answers[questionIndex];
+      } else {
+        state.answers[questionIndex] = selectedOption;
+      }
     },
-    toggleFlag(state, { payload: questionId }) {
-      state.flagged[questionId] = !state.flagged[questionId];
+
+    // Toggle flag on a question index
+    toggleFlag: (state, { payload: index }) => {
+      if (state.flagged.includes(index)) {
+        state.flagged = state.flagged.filter((i) => i !== index);
+      } else {
+        state.flagged.push(index);
+      }
     },
-    navigateTo(state, { payload: index }) {
+
+    // Navigate to question
+    setCurrentIndex: (state, { payload: index }) => {
       state.currentIndex = index;
     },
-    tick(state) {
-      if (state.timeRemaining > 0) state.timeRemaining--;
+
+    // Tick the countdown timer
+    tickTimer: (state) => {
+      if (state.timeRemaining > 0) {
+        state.timeRemaining -= 1;
+      }
     },
-    resetExam(state) {
-      Object.assign(state, examSlice.getInitialState());
-    },
+
+    // Clear exam state (e.g. on exit)
+    resetExam: () => ({
+      examId: null, attemptId: null, startTime: null,
+      questions: [], answers: {}, flagged: [], currentIndex: 0,
+      timeRemaining: 0, status: "idle", result: null, error: null,
+    }),
   },
-  extraReducers: (b) => {
-    b.addCase(startExam.pending,  (s) => { s.status = 'loading'; })
-     .addCase(startExam.fulfilled, (s, a) => {
-       s.status        = 'active';
-       s.currentAttempt = a.payload.attempt;
-       s.questions      = a.payload.questions;
-       s.timeRemaining  = (a.payload.duration || 60) * 60;
-     })
-     .addCase(startExam.rejected, (s, a) => { s.status = 'idle'; s.error = a.payload; })
-     .addCase(submitExam.pending,   (s) => { s.status = 'submitting'; })
-     .addCase(submitExam.fulfilled, (s, a) => { s.status = 'completed'; s.result = a.payload; })
-     .addCase(submitExam.rejected,  (s, a) => { s.status = 'active'; s.error = a.payload; });
+
+  extraReducers: (builder) => {
+    // ── loadExam ──────────────────────────────────────────────────────────────
+    builder
+      .addCase(loadExam.pending, (state) => {
+        state.status = "loading";
+        state.error  = null;
+      })
+      .addCase(loadExam.fulfilled, (state, { payload }) => {
+        state.examId        = payload.examId;
+        state.attemptId     = payload.attemptId;
+        state.questions     = payload.questions;
+        state.timeRemaining = payload.duration * 60; // minutes → seconds
+        state.startTime     = Date.now();
+        state.answers       = {};
+        state.flagged       = [];
+        state.currentIndex  = 0;
+        state.result        = null;
+        state.status        = "in_progress";
+      })
+      .addCase(loadExam.rejected, (state, { payload }) => {
+        state.status = "error";
+        state.error  = payload;
+      });
+
+    // ── submitExam ────────────────────────────────────────────────────────────
+    builder
+      .addCase(submitExam.pending, (state) => {
+        state.status = "submitting";
+        state.error  = null;
+      })
+      .addCase(submitExam.fulfilled, (state, { payload }) => {
+        state.status = "submitted";
+        // Normalise result shape
+        state.result = {
+          attemptId:        payload.attemptId || payload._id,
+          score:            payload.score            ?? 0,
+          totalMarks:       payload.totalMarks        ?? state.questions.length,
+          correct:          payload.correct           ?? 0,
+          incorrect:        payload.incorrect         ?? 0,
+          skipped:          payload.skipped           ?? 0,
+          accuracy:         payload.accuracy          ?? 0,
+          timeTaken:        payload.timeTaken         ?? 0,
+          sectionBreakdown: payload.sectionWiseAnalysis || payload.sectionBreakdown || [],
+          aiReview:         payload.aiReview          || null,
+        };
+      })
+      .addCase(submitExam.rejected, (state, { payload }) => {
+        state.status = "error";
+        state.error  = payload;
+      });
   },
 });
 
-export const { answerQuestion, toggleFlag, navigateTo, tick, resetExam } = examSlice.actions;
-export const setCurrentIndex = navigateTo;
-export const tickTimer = tick;
-export const loadExam = startExam;
+export const {
+  answerQuestion,
+  toggleFlag,
+  setCurrentIndex,
+  tickTimer,
+  resetExam,
+} = examSlice.actions;
+
 export default examSlice.reducer;

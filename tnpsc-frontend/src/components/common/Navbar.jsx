@@ -11,18 +11,24 @@ const Navbar = () => {
   const { t } = useTranslation();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useSelector((state) => state.auth);
+  const { user, isAuthenticated } = useSelector((s) => s.auth);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  const navLinks = [
-    { to: "/dashboard", label: t("nav.dashboard"), icon: "📊" },
-    { to: "/tests", label: t("nav.tests"), icon: "📝" },
+  const baseLinks = [
+    { to: "/dashboard",   label: t("nav.dashboard"),   icon: "📊" },
+    { to: "/tests",       label: t("nav.tests"),        icon: "📝" },
+    { to: "/leaderboard", label: t("nav.leaderboard"),  icon: "🏆" },
+    { to: "/materials",   label: t("nav.materials"),    icon: "📚" },
+    { to: "/syllabus",    label: t("nav.syllabus"),     icon: "📋" },
   ];
 
-  if (user?.role === "admin") {
-    navLinks.push({ to: "/admin", label: t("nav.admin"), icon: "⚙️" });
-  }
+  const adminLinks = user?.role === "admin"
+    ? [{ to: "/admin", label: t("nav.admin"), icon: "⚙️" }]
+    : [];
+
+  const navLinks = [...baseLinks, ...adminLinks];
 
   const handleLogout = () => {
     dispatch(logoutUser());
@@ -41,29 +47,30 @@ const Navbar = () => {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const avatarInitial = user?.name
-    ? user.name.charAt(0).toUpperCase()
-    : "U";
+  const avatarInitial = user?.name ? user.name.charAt(0).toUpperCase() : "U";
 
   return (
     <header className="sticky top-0 z-50 bg-dark/95 backdrop-blur-md border-b border-white/8 shadow-lg">
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
+
           {/* Left: Hamburger + Logo */}
           <div className="flex items-center gap-3">
             {isAuthenticated && (
               <button
-                onClick={() => dispatch(toggleSidebar())}
+                onClick={() => setMobileMenuOpen((v) => !v)}
                 className="lg:hidden p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                aria-label="Toggle sidebar"
+                aria-label="Toggle menu"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  {mobileMenuOpen
+                    ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />}
                 </svg>
               </button>
             )}
             <Link to="/" className="flex items-center gap-2 group">
-              <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-md group-hover:shadow-primary/40 transition-shadow">
+              <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-md">
                 <span className="text-white text-sm font-black">T</span>
               </div>
               <div className="hidden sm:block">
@@ -82,7 +89,7 @@ const Navbar = () => {
                   to={to}
                   className={({ isActive }) =>
                     cn(
-                      "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150",
+                      "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150",
                       isActive
                         ? "bg-primary/20 text-primary border border-primary/30"
                         : "text-white/60 hover:text-white hover:bg-white/8"
@@ -104,7 +111,7 @@ const Navbar = () => {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setDropdownOpen((v) => !v)}
-                  className="flex items-center gap-2 p-1.5 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="flex items-center gap-2 p-1.5 rounded-full hover:bg-white/10 transition-colors"
                 >
                   {user?.avatar ? (
                     <img
@@ -125,9 +132,8 @@ const Navbar = () => {
                   </svg>
                 </button>
 
-                {/* Dropdown Menu */}
                 {dropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-52 bg-dark border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden animate-fade-in z-50">
+                  <div className="absolute right-0 mt-2 w-52 bg-dark border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50">
                     <div className="px-4 py-3 border-b border-white/8">
                       <p className="text-white text-sm font-semibold truncate">{user?.name}</p>
                       <p className="text-white/40 text-xs truncate">{user?.email}</p>
@@ -139,13 +145,6 @@ const Navbar = () => {
                         className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/8 transition-colors"
                       >
                         <span>📊</span> {t("nav.dashboard")}
-                      </Link>
-                      <Link
-                        to="/profile"
-                        onClick={() => setDropdownOpen(false)}
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/8 transition-colors"
-                      >
-                        <span>👤</span> {t("nav.profile")}
                       </Link>
                     </div>
                     <div className="border-t border-white/8 py-1">
@@ -164,16 +163,10 @@ const Navbar = () => {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Link
-                  to="/login"
-                  className="px-3 py-1.5 text-sm text-white/70 hover:text-white transition-colors"
-                >
+                <Link to="/login" className="px-3 py-1.5 text-sm text-white/70 hover:text-white transition-colors">
                   {t("auth.login")}
                 </Link>
-                <Link
-                  to="/register"
-                  className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                >
+                <Link to="/register" className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium">
                   {t("auth.register")}
                 </Link>
               </div>
@@ -181,26 +174,29 @@ const Navbar = () => {
           </div>
         </div>
 
-        {/* Mobile Nav Links */}
-        {isAuthenticated && (
-          <div className="lg:hidden flex items-center gap-1 pb-2 overflow-x-auto scrollbar-none">
-            {navLinks.map(({ to, label, icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all",
-                    isActive
-                      ? "bg-primary/20 text-primary border border-primary/30"
-                      : "text-white/60 hover:text-white hover:bg-white/8"
-                  )
-                }
-              >
-                <span>{icon}</span>
-                {label}
-              </NavLink>
-            ))}
+        {/* Mobile Nav Drawer */}
+        {isAuthenticated && mobileMenuOpen && (
+          <div className="lg:hidden pb-3 border-t border-white/8 mt-1 pt-2">
+            <div className="flex flex-col gap-1">
+              {navLinks.map(({ to, label, icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+                      isActive
+                        ? "bg-primary/20 text-primary border border-primary/30"
+                        : "text-white/60 hover:text-white hover:bg-white/8"
+                    )
+                  }
+                >
+                  <span>{icon}</span>
+                  {label}
+                </NavLink>
+              ))}
+            </div>
           </div>
         )}
       </nav>
