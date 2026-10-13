@@ -28,33 +28,93 @@ exports.listTests = async (req, res, next) => {
 
 // ── POST /api/tests/mock  ────────────────────────────────────────────────────
 // Admin creates a mock test
-exports.createMockTest = async (req, res, next) => {
+// exports.createMockTest = async (req, res, next) => {
+//     console.log('📥 req.body:', JSON.stringify(req.body, null, 2));
+//   try {
+//     const {
+//       titleEn, titleTa, examGroup, duration, totalMarks,
+//       questionIds, sections, isPremium, scheduledAt, tags,
+//     } = req.body;
+
+//     const exam = await Exam.create({
+//       title:          { en: titleEn, ta: titleTa },
+//       type:           'MOCK',
+//       examGroup,
+//       duration,
+//       totalMarks,
+//       totalQuestions: questionIds?.length || sections?.reduce((a, s) => a + s.questionIds.length, 0),
+//       questions:      questionIds,
+//       sections,
+//       isPremium:      isPremium || false,
+//       scheduledAt,
+//       tags,
+//       createdBy:      req.user._id,
+//       isPublished:    false,
+//     });
+
+//     res.status(201).json({ success: true, exam });
+//   } catch (err) { next(err); }
+// };
+exports.createMockExam = async (req, res, next) => {
+  console.log('📥 req.body:', JSON.stringify(req.body, null, 2));
   try {
     const {
-      titleEn, titleTa, examGroup, duration, totalMarks,
-      questionIds, sections, isPremium, scheduledAt, tags,
-    } = req.body;
-
-    const exam = await Exam.create({
-      title:          { en: titleEn, ta: titleTa },
-      type:           'MOCK',
+      title,
+      type,
       examGroup,
       duration,
       totalMarks,
-      totalQuestions: questionIds?.length || sections?.reduce((a, s) => a + s.questionIds.length, 0),
-      questions:      questionIds,
-      sections,
-      isPremium:      isPremium || false,
-      scheduledAt,
-      tags,
-      createdBy:      req.user._id,
-      isPublished:    false,
+      totalQuestions,
+      questions,
+      negativeMarking,
+      isPremium,
+      isPublished,
+      pyqYear,
+    } = req.body;
+
+    // ── Validate title ────────────────────────────────────────────────────
+    if (!title || !title.en || !title.en.trim()) {
+      return next(new AppError('title.en is required', 400));
+    }
+
+    // ── Filter out any null/undefined question IDs ────────────────────────
+    const questionIds = Array.isArray(questions)
+      ? questions.filter((id) => id !== null && id !== undefined && id !== '')
+      : [];
+
+    // ── Derive totalQuestions ─────────────────────────────────────────────
+    const derivedTotal =
+      (totalQuestions != null && Number(totalQuestions) > 0)
+        ? Number(totalQuestions)
+        : questionIds.length;
+
+    if (derivedTotal === 0) {
+      return next(new AppError('At least one question is required', 400));
+    }
+
+    const exam = await Exam.create({
+      title: {
+        en: title.en.trim(),
+        ta: (title.ta || title.en).trim(),
+      },
+      type:            type        || 'MOCK',
+      examGroup:       examGroup   || 'ALL',
+      duration:        Number(duration)   || 90,
+      totalMarks:      Number(totalMarks) || derivedTotal,
+      totalQuestions:  derivedTotal,
+      questions:       questionIds,
+      negativeMarking: Number(negativeMarking) || 0,
+      isPremium:       Boolean(isPremium),
+      isPublished:     Boolean(isPublished) || false,
+      createdBy:       req.user?._id,
+      ...(pyqYear ? { pyqYear: Number(pyqYear) } : {}),
     });
 
-    res.status(201).json({ success: true, exam });
-  } catch (err) { next(err); }
+    res.status(201).json({ success: true, data: exam });
+  } catch (err) {
+    next(err);
+  }
 };
-
 // ── POST /api/tests/:examId/start  ──────────────────────────────────────────
 // Create an IN_PROGRESS attempt
 exports.startTest = async (req, res, next) => {
@@ -196,3 +256,6 @@ exports.getLeaderboard = async (req, res, next) => {
     res.json({ success: true, leaderboard: board, exam: { title: exam.title, totalMarks: exam.totalMarks } });
   } catch (err) { next(err); }
 };
+// Add these aliases at the very bottom of test.controller.js
+exports.createMockTest = exports.createMockExam;
+exports.getTests       = exports.getExams;
