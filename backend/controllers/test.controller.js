@@ -3,6 +3,7 @@ const { Exam, TestAttempt } = require('../models/Exam.model');
 const Question            = require('../models/Question.model');
 const User                = require('../models/User.model');
 const { AppError }        = require('../middlewares/error.middleware');
+const { gradeAttempt }    = require('../utils/gradeAttempt');
 
 // ── GET /api/tests  ─────────────────────────────────────────────────────────
 // List published tests (filtered by type / examGroup)
@@ -131,7 +132,18 @@ exports.startTest = async (req, res, next) => {
     const active = await TestAttempt.findOne({
       userId: req.user._id, examId: exam._id, status: 'IN_PROGRESS',
     });
-    if (active) return res.json({ success: true, attempt: active, exam });
+    // Return questions without correct answers so a resumed attempt can continue
+    const lang = req.user.languagePreference || 'en';
+    const questions = exam.questions.map(q => q.getLocalised(lang));
+
+    if (active) {
+      return res.json({
+        success: true,
+        attempt: active,
+        questions,
+        duration: exam.duration,
+      });
+    }
 
     const attempt = await TestAttempt.create({
       userId:     req.user._id,
@@ -139,10 +151,6 @@ exports.startTest = async (req, res, next) => {
       totalMarks: exam.totalMarks,
       startedAt:  new Date(),
     });
-
-    // Return questions without correct answers
-    const lang = req.user.languagePreference || 'en';
-    const questions = exam.questions.map(q => q.getLocalised(lang));
 
     res.json({ success: true, attempt, questions, duration: exam.duration });
   } catch (err) { next(err); }
@@ -162,47 +170,19 @@ exports.submitTest = async (req, res, next) => {
     if (attempt.status !== 'IN_PROGRESS')  return next(new AppError('Already submitted', 400));
 
     const exam = await Exam.findById(attempt.examId);
-    const questionIds = answers.map(a => a.questionId);
+    const questionIds = (answers || []).map(a => a.questionId).filter(Boolean);
     const questions   = await Question.find({ _id: { $in: questionIds } });
-    const qMap        = Object.fromEntries(questions.map(q => [q._id.toString(), q]));
 
-    // ── Auto-grading ──────────────────────────────────────────────────────
-    let score = 0, correct = 0, incorrect = 0, skipped = 0;
-    const subjectMap = {};
-
-    const gradedAnswers = answers.map(ans => {
-      const q   = qMap[ans.questionId?.toString()];
-      if (!q) return { ...ans, isCorrect: false, marksAwarded: 0 };
-
-      const isSkipped = !ans.selectedOption;
-      const isCorrect = !isSkipped && ans.selectedOption === q.correctOption;
-      let marks = 0;
-
-      if (isSkipped)       { skipped++; }
-      else if (isCorrect)  { correct++;  marks = exam.marksPerQuestion || 1; score += marks; }
-      else                 { incorrect++; marks = -(exam.negativeMarking || 0); score += marks; }
-
-      // Subject-wise accumulation
-      const subj = q.subject;
-      if (!subjectMap[subj]) subjectMap[subj] = { subject: subj, attempted: 0, correct: 0, incorrect: 0, skipped: 0, marksObtained: 0 };
-      if (isSkipped) subjectMap[subj].skipped++;
-      else {
-        subjectMap[subj].attempted++;
-        if (isCorrect) { subjectMap[subj].correct++; subjectMap[subj].marksObtained += marks; }
-        else subjectMap[subj].incorrect++;
-      }
-
-      return { questionId: ans.questionId, selectedOption: ans.selectedOption || null, isCorrect, marksAwarded: marks, timeTaken: ans.timeTaken || 0, isFlagged: ans.isFlagged || false };
-    });
-
-    const accuracy  = correct + incorrect > 0 ? Math.round((correct / (correct + incorrect)) * 100) : 0;
-    const attempted = correct + incorrect;
-
-    // Section analysis
-    const sectionWiseAnalysis = Object.values(subjectMap).map(s => ({
-      ...s,
-      accuracy: s.attempted > 0 ? Math.round((s.correct / s.attempted) * 100) : 0,
-    }));
+    const {
+      score,
+      correct,
+      incorrect,
+      skipped,
+      accuracy,
+      attempted,
+      gradedAnswers,
+      sectionWiseAnalysis,
+    } = gradeAttempt({ answers: answers || [], questions, exam });
 
     // Save attempt
     attempt.answersSubmitted    = gradedAnswers;

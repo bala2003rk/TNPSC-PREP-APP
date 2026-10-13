@@ -89,11 +89,19 @@ questionSchema.index(
 
 // ── Virtual: bilingual accessor helper ──────────────────────────────────────
 questionSchema.methods.getLocalised = function (lang = 'en') {
+  const text = this.questionText[lang] || this.questionText.en;
   return {
-    questionText: this.questionText[lang] || this.questionText.en,
+    _id: this._id,
+    subject: this.subject,
+    questionText: text,
+    text,
+    text_en: this.questionText.en,
+    text_ta: this.questionText.ta,
     options: this.options.map(o => ({
       key:  o.key,
       text: o.text[lang] || o.text.en,
+      text_en: o.text.en,
+      text_ta: o.text.ta,
       imageUrl: o.imageUrl,
     })),
     explanation: this.explanation

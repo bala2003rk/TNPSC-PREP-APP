@@ -39,9 +39,9 @@ export const submitExam = createAsyncThunk(
       // Build answers array expected by backend
       const answersArray = questions.map((q, idx) => ({
         questionId:     q._id,
-        selectedOption: answers[idx] ?? null,   // 'A'|'B'|'C'|'D'|null
+        selectedOption: answers[idx] ?? null,
         isFlagged:      flagged.includes(idx),
-        timeTaken:      0, // per-question timer not tracked; use 0
+        timeTaken:      0,
       }));
 
       const totalTimeTaken = startTime
@@ -92,12 +92,17 @@ const examSlice = createSlice({
   reducers: {
     // Select an answer for the current question
     answerQuestion: (state, { payload }) => {
-      const { questionIndex, selectedOption } = payload;
+      const { questionIndex, selectedOption, optionIndex } = payload;
+      const keys = ["A", "B", "C", "D"];
+      const option =
+        selectedOption ||
+        (Number.isInteger(optionIndex) ? keys[optionIndex] : undefined);
+      if (!option) return;
       // Toggle off if same option clicked again
-      if (state.answers[questionIndex] === selectedOption) {
+      if (state.answers[questionIndex] === option) {
         delete state.answers[questionIndex];
       } else {
-        state.answers[questionIndex] = selectedOption;
+        state.answers[questionIndex] = option;
       }
     },
 
@@ -162,18 +167,18 @@ const examSlice = createSlice({
       })
       .addCase(submitExam.fulfilled, (state, { payload }) => {
         state.status = "submitted";
-        // Normalise result shape
+        const attempt = payload.attempt || payload.data || payload;
         state.result = {
-          attemptId:        payload.attemptId || payload._id,
-          score:            payload.score            ?? 0,
-          totalMarks:       payload.totalMarks        ?? state.questions.length,
-          correct:          payload.correct           ?? 0,
-          incorrect:        payload.incorrect         ?? 0,
-          skipped:          payload.skipped           ?? 0,
-          accuracy:         payload.accuracy          ?? 0,
-          timeTaken:        payload.timeTaken         ?? 0,
-          sectionBreakdown: payload.sectionWiseAnalysis || payload.sectionBreakdown || [],
-          aiReview:         payload.aiReview          || null,
+          attemptId:        attempt.attemptId || attempt._id,
+          score:            attempt.score            ?? 0,
+          totalMarks:       attempt.totalMarks        ?? state.questions.length,
+          correct:          attempt.correct           ?? 0,
+          incorrect:        attempt.incorrect         ?? 0,
+          skipped:          attempt.skipped           ?? 0,
+          accuracy:         attempt.accuracy          ?? 0,
+          timeTaken:        attempt.timeTaken         ?? 0,
+          sectionBreakdown: attempt.sectionWiseAnalysis || attempt.sectionBreakdown || [],
+          aiReview:         attempt.aiReview          || null,
         };
       })
       .addCase(submitExam.rejected, (state, { payload }) => {

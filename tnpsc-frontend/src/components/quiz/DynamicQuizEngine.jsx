@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import {
   answerQuestion,
   toggleFlag,
@@ -9,6 +10,9 @@ import {
 } from "../../store/slices/examSlice";
 import useTranslation from "../../hooks/useTranslation";
 import { cn } from "../../utils/cn";
+
+const OPTION_KEYS = ["A", "B", "C", "D"];
+const isExamLive = (status) => status === "in_progress" || status === "active";
 
 // ─── Timer Display ────────────────────────────────────────────────────────────
 const TimerDisplay = ({ seconds }) => {
@@ -105,38 +109,45 @@ const ConfirmModal = ({ isOpen, onConfirm, onCancel, t, unanswered }) => {
 // ─── Main DynamicQuizEngine ───────────────────────────────────────────────────
 const DynamicQuizEngine = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { t, lang } = useTranslation();
-  const { questions, answers, flagged, currentIndex, timeRemaining, status } =
+  const { questions, answers, flagged, currentIndex, timeRemaining, status, result } =
     useSelector((s) => s.exam);
 
   const [showModal, setShowModal] = useState(false);
   const [omrPanelOpen, setOmrPanelOpen] = useState(false);
   const timerRef = useRef(null);
 
-  // Countdown timer
+  // Countdown timer — loadExam sets status to "in_progress"
   useEffect(() => {
-    if (status !== "active") return;
+    if (!isExamLive(status)) return;
     timerRef.current = setInterval(() => {
       dispatch(tickTimer());
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [status, dispatch]);
 
-  // Auto-submit when time runs out
-  useEffect(() => {
-    if (timeRemaining <= 0 && status === "active") {
-      clearInterval(timerRef.current);
-      handleFinalSubmit();
-    }
-  }, [timeRemaining, status]);
-
   const handleFinalSubmit = useCallback(() => {
     dispatch(submitExam());
     setShowModal(false);
   }, [dispatch]);
 
-  const handleOptionSelect = (optionIndex) => {
-    dispatch(answerQuestion({ questionIndex: currentIndex, optionIndex }));
+  // Auto-submit when time runs out
+  useEffect(() => {
+    if (timeRemaining <= 0 && isExamLive(status)) {
+      clearInterval(timerRef.current);
+      handleFinalSubmit();
+    }
+  }, [timeRemaining, status, handleFinalSubmit]);
+
+  useEffect(() => {
+    if (status === "submitted" && result?.attemptId) {
+      navigate(`/results/${result.attemptId}`);
+    }
+  }, [status, result, navigate]);
+
+  const handleOptionSelect = (optionKey) => {
+    dispatch(answerQuestion({ questionIndex: currentIndex, selectedOption: optionKey }));
   };
 
   const handleFlagToggle = () => {
@@ -171,7 +182,7 @@ const DynamicQuizEngine = () => {
 
   const questionText = lang === "ta" && currentQuestion.text_ta
     ? currentQuestion.text_ta
-    : currentQuestion.text || currentQuestion.text_en;
+    : currentQuestion.questionText || currentQuestion.text || currentQuestion.text_en;
 
   const options = currentQuestion.options || [];
 
@@ -261,13 +272,14 @@ const DynamicQuizEngine = () => {
             </p>
             {options.map((option, idx) => {
               const optionText = lang === "ta" && option.text_ta ? option.text_ta : option.text || option;
-              const isSelected = answers[currentIndex] === idx;
-              const optionLabel = ["A", "B", "C", "D"][idx] || String(idx + 1);
+              const optionKey = option.key || OPTION_KEYS[idx] || String(idx + 1);
+              const isSelected = answers[currentIndex] === optionKey;
+              const optionLabel = optionKey;
 
               return (
                 <button
                   key={idx}
-                  onClick={() => handleOptionSelect(idx)}
+                  onClick={() => handleOptionSelect(optionKey)}
                   className={cn(
                     "w-full flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all group hover:shadow-md",
                     isSelected
@@ -420,6 +432,7 @@ const DynamicQuizEngine = () => {
         onConfirm={handleFinalSubmit}
         onCancel={() => setShowModal(false)}
         t={t}
+        unanswered={questions.length - answeredCount}
       />
     </div>
   );

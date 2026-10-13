@@ -39,9 +39,13 @@ const ScoreRing = ({ percentage }) => {
 const SolutionItem = ({ question, userAnswer, index, lang, t }) => {
   const [open, setOpen] = useState(false);
   const options = question.options || [];
-  const correctIdx = question.correctAnswer ?? question.correct_option;
-  const isCorrect = userAnswer === correctIdx;
-  const isSkipped = userAnswer === undefined || userAnswer === null;
+  const OPTION_KEYS = ["A", "B", "C", "D"];
+  const correctKey = question.correctOption ?? question.correctAnswer ?? question.correct_option;
+  const userKey = userAnswer === 0 || Number.isInteger(userAnswer)
+    ? OPTION_KEYS[userAnswer]
+    : userAnswer;
+  const isCorrect = userKey != null && userKey === correctKey;
+  const isSkipped = userKey === undefined || userKey === null;
 
   const getText = (obj) => {
     if (typeof obj === "string") return obj;
@@ -92,9 +96,9 @@ const SolutionItem = ({ question, userAnswer, index, lang, t }) => {
           <div className="space-y-2">
             {options.map((opt, idx) => {
               const optText = getText(opt);
-              const optLabel = ["A", "B", "C", "D"][idx] || String(idx + 1);
-              const isCorrectOpt = idx === correctIdx;
-              const isUserOpt = idx === userAnswer;
+              const optLabel = opt.key || OPTION_KEYS[idx] || String(idx + 1);
+              const isCorrectOpt = optLabel === correctKey || idx === correctKey;
+              const isUserOpt = optLabel === userKey || idx === userAnswer;
 
               return (
                 <div
