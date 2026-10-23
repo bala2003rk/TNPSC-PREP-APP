@@ -1,3 +1,4 @@
+//examSlices.js (./frontend/src/store/slices/examSlices.js)
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import api from "../../utils/api";
 
@@ -165,22 +166,57 @@ const examSlice = createSlice({
         state.status = "submitting";
         state.error  = null;
       })
+      // .addCase(submitExam.fulfilled, (state, { payload }) => {
+      //   state.status = "submitted";
+      //   const attempt = payload.attempt || payload.data || payload;
+      //   state.result = {
+      //     attemptId:        attempt.attemptId || attempt._id,
+      //     score:            attempt.score            ?? 0,
+      //     totalMarks:       attempt.totalMarks        ?? state.questions.length,
+      //     correct:          attempt.correct           ?? 0,
+      //     incorrect:        attempt.incorrect         ?? 0,
+      //     skipped:          attempt.skipped           ?? 0,
+      //     accuracy:         attempt.accuracy          ?? 0,
+      //     timeTaken:        attempt.timeTaken         ?? 0,
+      //     sectionBreakdown: attempt.sectionWiseAnalysis || attempt.sectionBreakdown || [],
+      //     aiReview:         attempt.aiReview          || null,
+      //   };
+      // })
       .addCase(submitExam.fulfilled, (state, { payload }) => {
-        state.status = "submitted";
-        const attempt = payload.attempt || payload.data || payload;
-        state.result = {
-          attemptId:        attempt.attemptId || attempt._id,
-          score:            attempt.score            ?? 0,
-          totalMarks:       attempt.totalMarks        ?? state.questions.length,
-          correct:          attempt.correct           ?? 0,
-          incorrect:        attempt.incorrect         ?? 0,
-          skipped:          attempt.skipped           ?? 0,
-          accuracy:         attempt.accuracy          ?? 0,
-          timeTaken:        attempt.timeTaken         ?? 0,
-          sectionBreakdown: attempt.sectionWiseAnalysis || attempt.sectionBreakdown || [],
-          aiReview:         attempt.aiReview          || null,
-        };
-      })
+  state.status = "submitted";
+  const attempt = payload.attempt || payload.data || payload;
+  // Replace questions with graded versions that include correctOption
+  if (payload.gradedQuestions?.length) {
+    state.questions = payload.gradedQuestions.map(q => ({
+      _id:          q._id,
+      subject:      q.subject,
+      questionText: q.questionText?.en || q.questionText,
+      text_en:      q.questionText?.en,
+      text_ta:      q.questionText?.ta,
+      correctOption: q.correctOption,
+      explanation:   q.explanation?.en || q.explanation,
+      explanation_ta: q.explanation?.ta,
+      options: (q.options || []).map(o => ({
+        key:     o.key,
+        text:    o.text?.en || o.text,
+        text_en: o.text?.en,
+        text_ta: o.text?.ta,
+      })),
+    }));
+  }
+  state.result = {
+    attemptId:        attempt.attemptId || attempt._id,
+    score:            attempt.score            ?? 0,
+    totalMarks:       attempt.totalMarks        ?? state.questions.length,
+    correct:          attempt.correct           ?? 0,
+    incorrect:        attempt.incorrect         ?? 0,
+    skipped:          attempt.skipped           ?? 0,
+    accuracy:         attempt.accuracy          ?? 0,
+    timeTaken:        attempt.timeTaken         ?? 0,
+    sectionBreakdown: attempt.sectionWiseAnalysis || attempt.sectionBreakdown || [],
+    aiReview:         attempt.aiReview          || null,
+  };
+})
       .addCase(submitExam.rejected, (state, { payload }) => {
         state.status = "error";
         state.error  = payload;

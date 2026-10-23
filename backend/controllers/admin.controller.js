@@ -1,3 +1,4 @@
+//admin.controller.js
 const xlsx     = require('xlsx');
 const Joi      = require('joi');
 const Question = require('../models/Question.model');
@@ -143,7 +144,7 @@ exports.publishExam = async (req, res, next) => {
 // GET /api/admin/exams/unpublished
 exports.getUnpublishedExams = async (req, res, next) => {
   try {
-    const { Exam } = require('../models/Exam.model');
+    // const { Exam } = require('../models/Exam.model');
     const exams = await Exam.find({ isPublished: false })
       .select('title totalQuestions duration type createdAt')
       .sort({ createdAt: -1 });

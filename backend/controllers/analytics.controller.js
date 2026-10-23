@@ -1,3 +1,5 @@
+//analytics.controller.js
+
 const mongoose            = require('mongoose');
 const { TestAttempt }     = require('../models/Exam.model');
 const User                = require('../models/User.model');
@@ -138,15 +140,24 @@ exports.getGlobalLeaderboard = async (req, res, next) => {
       },
       { $unwind: '$user' },
       {
+        // $project: {
+        //   userId:      '$_id',
+        //   name:        '$user.name',
+        //   profileImage:'$user.profileImage',
+        //   totalScore:  1,
+        //   totalTests:  1,
+        //   avgAccuracy: { $round: ['$avgAccuracy', 1] },
+        //   _id:         0,
+        // },
         $project: {
-          userId:      '$_id',
-          name:        '$user.name',
-          profileImage:'$user.profileImage',
-          totalScore:  1,
-          totalTests:  1,
-          avgAccuracy: { $round: ['$avgAccuracy', 1] },
-          _id:         0,
-        },
+            userId:      '$_id',
+            name:        '$user.name',
+            profileImage:'$user.profileImage',
+            score:       '$totalScore',
+            totalTests:  1,
+            accuracy:    { $round: ['$avgAccuracy', 1] },
+            _id:         0,
+          },
       },
     ]);
 

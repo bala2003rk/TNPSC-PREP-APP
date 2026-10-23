@@ -241,7 +241,8 @@ const ResultScreen = () => {
                   {sectionBreakdown.map((sec, i) => (
                     <tr key={i} className="hover:bg-gray-50 transition-colors">
                       <td className={cn("px-4 py-3 text-sm font-medium text-gray-800", lang === "ta" && "font-tamil")}>
-                        {lang === "ta" && sec.name_ta ? sec.name_ta : sec.name}
+                        {/* {lang === "ta" && sec.name_ta ? sec.name_ta : sec.name} */}
+                        {sec.subject || sec.name}
                       </td>
                       <td className="px-4 py-3 text-sm text-green-600 font-semibold">{sec.correct}</td>
                       <td className="px-4 py-3 text-sm text-red-500 font-semibold">{sec.incorrect}</td>

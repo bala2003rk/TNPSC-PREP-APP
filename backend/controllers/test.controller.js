@@ -1,3 +1,4 @@
+//test.controller.js
 const mongoose            = require('mongoose');
 const { Exam, TestAttempt } = require('../models/Exam.model');
 const Question            = require('../models/Question.model');
@@ -134,8 +135,11 @@ exports.startTest = async (req, res, next) => {
     });
     // Return questions without correct answers so a resumed attempt can continue
     const lang = req.user.languagePreference || 'en';
-    const questions = exam.questions.map(q => q.getLocalised(lang));
-
+    // const questions = exam.questions.map(q => q.getLocalised(lang));
+    const questions = exam.questions.map(q => ({
+      _id: q._id,
+      ...q.getLocalised(lang),
+    }));
     if (active) {
       return res.json({
         success: true,
@@ -219,7 +223,13 @@ exports.submitTest = async (req, res, next) => {
       $inc: { attemptCount: 1 },
     });
 
-    res.json({ success: true, attempt });
+    // res.json({ success: true, attempt });
+    // Fetch questions WITH correct answers for solution display
+    const gradedQuestions = await Question.find({
+      _id: { $in: attempt.answersSubmitted.map(a => a.questionId) }
+    }).select('questionText options correctOption explanation subject unit');
+
+    res.json({ success: true, attempt, gradedQuestions });
   } catch (err) { next(err); }
 };
 

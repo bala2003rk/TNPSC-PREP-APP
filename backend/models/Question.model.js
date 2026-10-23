@@ -1,3 +1,5 @@
+// Question.model.js
+
 const mongoose = require('mongoose');
 
 // Bilingual text wrapper – used across the schema
