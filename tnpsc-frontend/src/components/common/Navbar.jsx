@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { logoutUser } from "../../store/slices/authSlice";
+import { firebaseSignOut } from "../../utils/firebase";
 import { toggleSidebar } from "../../store/slices/uiSlice";
 import LanguageToggle from "./LanguageToggle";
 import useTranslation from "../../hooks/useTranslation";
@@ -30,7 +31,12 @@ const Navbar = () => {
 
   const navLinks = [...baseLinks, ...adminLinks];
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await firebaseSignOut();
+    } catch (err) {
+      console.error("Firebase sign-out failed:", err);
+    }
     dispatch(logoutUser());
     setDropdownOpen(false);
     navigate("/login");
@@ -145,6 +151,13 @@ const Navbar = () => {
                         className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/8 transition-colors"
                       >
                         <span>📊</span> {t("nav.dashboard")}
+                      </Link>
+                      <Link
+                        to="/profile"
+                        onClick={() => setDropdownOpen(false)}
+                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/8 transition-colors"
+                      >
+                        <span>👤</span> {t("nav.profile")}
                       </Link>
                     </div>
                     <div className="border-t border-white/8 py-1">

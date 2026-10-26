@@ -30,8 +30,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, minlength: 6, select: false },
 
     // Auth providers
-    googleId:  String,
-    firebaseUid: String,
+    firebaseUid: { type: String, unique: true, sparse: true },
 
     role: { type: String, enum: ['student', 'admin', 'moderator'], default: 'student' },
 
@@ -62,7 +61,16 @@ const userSchema = new mongoose.Schema(
     isVerified:   { type: Boolean, default: false },
     isActive:     { type: Boolean, default: true },
     refreshToken: { type: String, select: false },
+    avatar:           { type: String, default: '' },
+    avatarPublicId:   { type: String, default: '' },
+
+    // Password reset OTP fields
+    passwordResetOtp:            String,
+    passwordResetOtpExpires:     Date,
+    passwordResetToken:          String,
+    passwordResetTokenExpires:   Date,
   },
+
   { timestamps: true }
 );
 

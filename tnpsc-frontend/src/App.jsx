@@ -15,6 +15,8 @@ import { loadExam } from "./store/slices/examSlice";
 // ── Pages ─────────────────────────────────────────────────────────────────────
 import LoginPage           from "./pages/LoginPage";
 import RegisterPage        from "./pages/RegisterPage";
+import ForgotPasswordPage   from "./pages/ForgotPasswordPage";
+import ProfilePage         from "./pages/ProfilePage";
 import TestListPage        from "./pages/TestListPage";
 import AdminPage           from "./pages/AdminPage";
 import CreateTestPage      from "./pages/CreateTestPage";
@@ -193,6 +195,7 @@ const App = () => (
       {/* Public */}
       <Route path="/login"    element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
       {/* Protected with Navbar */}
       <Route path="/" element={
@@ -201,6 +204,10 @@ const App = () => (
 
       <Route path="/dashboard" element={
         <ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>
+      } />
+
+      <Route path="/profile" element={
+        <ProtectedRoute><Layout><ProfilePage /></Layout></ProtectedRoute>
       } />
 
       <Route path="/tests" element={

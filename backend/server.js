@@ -15,6 +15,7 @@ const paymentRoutes    = require('./routes/payment.routes');
 const syllabusRoutes   = require('./routes/syllabus.routes');
 const materialRoutes = require('./routes/studyMaterial.routes');
 const { errorHandler } = require('./middlewares/error.middleware');
+const profileRoutes = require('./routes/profile.routes');
 
 const app = express();
 
@@ -24,7 +25,7 @@ app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-
+app.use('/api/profile', profileRoutes);
 // ── Rate Limiting ───────────────────────────────────────────────────────────
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
 app.use('/api/', limiter);

@@ -22,6 +22,17 @@ export const registerUser = createAsyncThunk('auth/register', async (payload, { 
   } catch (err) { return rejectWithValue(err.response?.data?.message || 'Registration failed'); }
 });
 
+export const firebaseLogin = createAsyncThunk('auth/firebaseLogin', async (idToken, { rejectWithValue }) => {
+  try {
+    const { data } = await api.post('/auth/firebase', { idToken });
+    localStorage.setItem('accessToken', data.accessToken);
+    localStorage.setItem('refreshToken', data.refreshToken);
+    return data.user;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Google sign-in failed');
+  }
+});
+
 export const fetchMe = createAsyncThunk('auth/me', async (_, { rejectWithValue }) => {
   try {
     const { data } = await api.get('/auth/me');
@@ -46,6 +57,10 @@ const authSlice = createSlice({
     setLanguage(state, { payload }) {
       if (state.user) state.user.languagePreference = payload;
     },
+    updateUser(state, { payload }) {
+      state.user = { ...(state.user || {}), ...payload };
+      state.isAuthenticated = !!state.user;
+    },
   },
   extraReducers: (b) => {
     const pending  = (s)    => { s.loading = true;  s.error = null; };
@@ -57,12 +72,15 @@ const authSlice = createSlice({
      .addCase(registerUser.pending, pending)
      .addCase(registerUser.fulfilled, fulfilled)
      .addCase(registerUser.rejected, rejected)
+     .addCase(firebaseLogin.pending, pending)
+     .addCase(firebaseLogin.fulfilled, fulfilled)
+     .addCase(firebaseLogin.rejected, rejected)
      .addCase(fetchMe.pending,  pending)
      .addCase(fetchMe.fulfilled, fulfilled)
      .addCase(fetchMe.rejected, (s) => { s.loading = false; s.user = null; s.isAuthenticated = false; });
   },
 });
 
-export const { logout, clearError, setLanguage } = authSlice.actions;
+export const { logout, clearError, setLanguage, updateUser } = authSlice.actions;
 export const logoutUser = logout;
 export default authSlice.reducer;
