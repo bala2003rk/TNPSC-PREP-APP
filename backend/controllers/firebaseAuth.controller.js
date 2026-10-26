@@ -93,7 +93,9 @@ exports.firebaseLogin = async (req, res, next) => {
         to: user.email,
         name: user.name,
         targetExams: user.targetExams || [],
-      }).catch((err) => console.warn('Welcome email failed:', err.message));
+      })
+        .then(() => console.info('Welcome email accepted by SMTP'))
+        .catch((err) => console.warn('Welcome email failed:', err.message));
     }
 
     res.status(200).json({

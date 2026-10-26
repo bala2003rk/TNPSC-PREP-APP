@@ -9,6 +9,8 @@ jest.mock('nodemailer', () => {
 });
 
 const nodemailer = require('nodemailer');
+process.env.GMAIL_USER = 'test@example.com';
+process.env.GMAIL_APP_PASSWORD = 'abcd efgh ijkl mnop';
 const { sendWelcomeEmail } = require('./email');
 
 describe('sendWelcomeEmail', () => {
@@ -35,5 +37,10 @@ describe('sendWelcomeEmail', () => {
     expect(mailPayload.html).toContain('Ram Kumar');
     expect(mailPayload.html).toContain('GROUP_1');
     expect(mailPayload.html).toContain('/dashboard');
+  });
+
+  test('removes spaces from Gmail app passwords before configuring SMTP', () => {
+    const transportConfig = nodemailer.createTransport.mock.calls[0][0];
+    expect(transportConfig.auth.pass).toBe('abcdefghijklmnop');
   });
 });

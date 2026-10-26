@@ -271,7 +271,7 @@ const StepNewPassword = ({ resetToken, t, lang }) => {
     );
   }
 
-  const inputCls = "w-full px-4 py-3 bg-white/8 border border-white/15 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-primary text-sm pr-11";
+  const inputCls = "w-full px-4 py-3 bg-white border border-white/15 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:border-primary text-sm pr-11";
 
   return (
     <div className="space-y-5">
