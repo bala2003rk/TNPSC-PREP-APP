@@ -159,6 +159,16 @@ const Navbar = () => {
                       >
                         <span>👤</span> {t("nav.profile")}
                       </Link>
+                      {/* Add after the existing Profile link */}
+                      {user?.role === "admin" && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/8 transition-colors"
+                        >
+                          <span>⚙️</span> Admin Panel
+                        </Link>
+                      )}
                     </div>
                     <div className="border-t border-white/8 py-1">
                       <button

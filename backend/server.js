@@ -46,12 +46,29 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() })
 app.use(errorHandler);
 
 // ── Database & Start ────────────────────────────────────────────────────────
-mongoose.connect(process.env.MONGO_URI).then(() => {
+// mongoose.connect(process.env.MONGO_URI).then(() => {
+//     console.log('✅  MongoDB connected');
+//     app.listen(process.env.PORT || 5000, () =>
+//       console.log(`🚀  Server running on port ${process.env.PORT || 5000}`)
+//     );
+//   })
+//   .catch((err) => { console.error('❌  DB Error:', err); process.exit(1); });
+
+mongoose.connect(process.env.MONGO_URI, {
+    autoSelectFamily: false, // Forces IPv4 to bypass Windows/Node DNS routing issues
+    family: 4,              // Explicitly force IPv4 socket usage
+    tls: true,
+})
+  .then(() => {
     console.log('✅  MongoDB connected');
     app.listen(process.env.PORT || 5000, () =>
       console.log(`🚀  Server running on port ${process.env.PORT || 5000}`)
     );
-  })
-  .catch((err) => { console.error('❌  DB Error:', err); process.exit(1); });
+})
+  .catch((err) => {
+    console.error('❌  DB Error:', err);
+    process.exit(1);
+});
+
 
 module.exports = app;
