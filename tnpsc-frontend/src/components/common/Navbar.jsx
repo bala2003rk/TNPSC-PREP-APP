@@ -20,6 +20,7 @@ const Navbar = () => {
   const baseLinks = [
     { to: "/dashboard",   label: t("nav.dashboard"),   icon: "📊" },
     { to: "/tests",       label: t("nav.tests"),        icon: "📝" },
+    { to: "/pyq",         label: t("nav.pyq"),          icon: "📜" },
     { to: "/leaderboard", label: t("nav.leaderboard"),  icon: "🏆" },
     { to: "/materials",   label: t("nav.materials"),    icon: "📚" },
     { to: "/syllabus",    label: t("nav.syllabus"),     icon: "📋" },

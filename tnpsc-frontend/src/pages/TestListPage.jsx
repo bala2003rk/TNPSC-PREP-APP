@@ -1,14 +1,27 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../utils/api";
 import useTranslation from "../hooks/useTranslation";
 import { cn } from "../utils/cn";
 
 const FILTER_TABS = [
   { key: "MOCK", label: "tests.mock" },
-  { key: "PYQ", label: "tests.pyq" },
   { key: "DAILY_QUIZ", label: "tests.dailyQuiz" },
 ];
+
+const getTestTitle = (test, lang) => {
+  const title = test.title;
+  const legacyTamilTitle = typeof test.title_ta === "string" ? test.title_ta : "";
+  if (typeof title === "string") {
+    return (lang === "ta" && legacyTamilTitle) || title;
+  }
+  if (title && typeof title === "object") {
+    const tamilTitle = typeof title.ta === "string" ? title.ta : "";
+    const englishTitle = typeof title.en === "string" ? title.en : "";
+    return (lang === "ta" && tamilTitle) || englishTitle || legacyTamilTitle;
+  }
+  return legacyTamilTitle;
+};
 
 const DifficultyBadge = ({ difficulty, t, lang }) => {
   const map = {
@@ -24,9 +37,14 @@ const DifficultyBadge = ({ difficulty, t, lang }) => {
   );
 };
 
-const TestCard = ({ test, t, lang, onStart }) => {
+const TestCard = ({ test, t, lang, onStart, now }) => {
   const isPremium = test.isPremium;
   const hasBestScore = test.bestScore !== undefined && test.bestScore !== null;
+  const startsAt = test.availableFrom || test.scheduledAt;
+  const startTime = startsAt ? new Date(startsAt).getTime() : null;
+  const endTime = test.availableTill ? new Date(test.availableTill).getTime() : null;
+  const isUpcoming = startTime !== null && now < startTime;
+  const isAvailable = !isUpcoming && (endTime === null || now < endTime);
 
   return (
     <div className={cn(
@@ -49,13 +67,21 @@ const TestCard = ({ test, t, lang, onStart }) => {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className={cn("text-gray-900 font-bold text-sm leading-snug", lang === "ta" && "font-tamil")}>
-              {lang === "ta" && test.title_ta ? test.title_ta : test.title}
+              {getTestTitle(test, lang)}
             </h3>
             {test.subject && (
               <p className="text-gray-400 text-xs mt-0.5">{test.subject}</p>
             )}
           </div>
         </div>
+
+        {startsAt && (
+          <p className="text-xs text-gray-500 mb-3">
+            {isUpcoming ? `${t("tests.opensAt")}: ` : ""}
+            {new Date(startsAt).toLocaleString(lang === "ta" ? "ta-IN" : "en-IN")}
+            {test.availableTill && ` — ${new Date(test.availableTill).toLocaleString(lang === "ta" ? "ta-IN" : "en-IN")}`}
+          </p>
+        )}
 
         {/* Meta info */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -70,7 +96,7 @@ const TestCard = ({ test, t, lang, onStart }) => {
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            {test.questionCount} {t("tests.questions")}
+            {test.totalQuestions ?? test.questionCount} {t("tests.questions")}
           </div>
           {test.difficulty && (
             <>
@@ -100,15 +126,19 @@ const TestCard = ({ test, t, lang, onStart }) => {
 
         <button
           onClick={() => onStart(test)}
-          disabled={isPremium && !test.isUnlocked}
+          disabled={!isAvailable || (isPremium && !test.isUnlocked)}
           className={cn(
             "w-full py-2.5 rounded-xl text-sm font-bold transition-all",
-            isPremium && !test.isUnlocked
+            !isAvailable || (isPremium && !test.isUnlocked)
               ? "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
               : "bg-gradient-to-r from-primary to-accent text-white shadow-md hover:opacity-90 hover:shadow-primary/30"
           )}
         >
-          {isPremium && !test.isUnlocked ? (
+          {!isAvailable ? (
+            <span className={cn(lang === "ta" && "font-tamil")}>
+              {isUpcoming ? t("tests.upcoming") : t("tests.closed")}
+            </span>
+          ) : isPremium && !test.isUnlocked ? (
             <span className={cn(lang === "ta" && "font-tamil")}>🔒 {t("tests.locked")}</span>
           ) : (
             <span className={cn(lang === "ta" && "font-tamil")}>{t("tests.startTest")} →</span>
@@ -119,21 +149,47 @@ const TestCard = ({ test, t, lang, onStart }) => {
   );
 };
 
-const TestListPage = () => {
+const CompletedTestCard = ({ attempt, t, lang, onReview }) => (
+  <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+    <h3 className={cn("text-gray-900 font-bold text-sm mb-3", lang === "ta" && "font-tamil")}>
+      {getTestTitle(attempt.examId, lang)}
+    </h3>
+    <button
+      onClick={() => onReview(attempt.examId._id)}
+      className="w-full py-2.5 rounded-xl text-sm font-bold text-primary bg-primary/10 hover:bg-primary/15"
+    >
+      {t("tests.viewSolutions")}
+    </button>
+  </div>
+);
+
+const TestListPage = ({ initialType = "MOCK", isPYQ = false }) => {
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("MOCK");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedType = searchParams.get("type");
+  const [activeTab, setActiveTab] = useState(requestedType || initialType);
   const [tests, setTests] = useState([]);
+  const [completedAttempts, setCompletedAttempts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchTests = async (type) => {
     try {
       setLoading(true);
       setError(null);
-      const res = await api.get("/tests", { params: { type } });
-      setTests(res.data?.tests || res.data || []);
+      const requests = [api.get("/tests", { params: { type } })];
+      if (!isPYQ) requests.push(api.get("/tests/attempts/history", { params: { type } }));
+      const [testsResponse, historyResponse] = await Promise.all(requests);
+      setTests(testsResponse.data?.tests || testsResponse.data || []);
+      setCompletedAttempts(historyResponse?.data?.attempts || []);
     } catch (err) {
       setError(err.response?.data?.message || t("common.error"));
     } finally {
@@ -143,17 +199,30 @@ const TestListPage = () => {
 
   useEffect(() => {
     fetchTests(activeTab);
-  }, [activeTab]);
+  }, [activeTab, isPYQ]);
+
+  useEffect(() => {
+    if (!isPYQ && requestedType && FILTER_TABS.some((tab) => tab.key === requestedType)) {
+      setActiveTab(requestedType);
+    }
+  }, [isPYQ, requestedType]);
 
   const handleStart = (test) => {
     navigate(`/exam/${test._id}`);
   };
 
   const filteredTests = tests.filter((test) => {
+    const alreadyCompleted = completedAttempts.some(
+      (attempt) => String(attempt.examId?._id) === String(test._id)
+    );
+    if (alreadyCompleted) return false;
     if (!search.trim()) return true;
-    const title = (lang === "ta" && test.title_ta ? test.title_ta : test.title || "").toLowerCase();
+    const title = getTestTitle(test, lang).toLowerCase();
     return title.includes(search.toLowerCase());
   });
+  const filteredAttempts = completedAttempts.filter((attempt) =>
+    getTestTitle(attempt.examId, lang).toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -161,13 +230,13 @@ const TestListPage = () => {
       <div className="bg-dark px-4 pt-8 pb-20">
         <div className="max-w-5xl mx-auto">
           <h1 className={cn("text-2xl font-black text-white mb-1", lang === "ta" && "font-tamil")}>
-            {t("tests.title")}
+            {isPYQ ? t("tests.pyq") : t("tests.title")}
           </h1>
           <p className="text-white/40 text-sm">Select a test to begin your preparation</p>
 
           {/* Search */}
           <div className="mt-5 relative">
-            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -176,7 +245,7 @@ const TestListPage = () => {
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("common.search")}
               className={cn(
-                "w-full pl-10 pr-4 py-3 bg-white/8 border border-white/15 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-primary focus:bg-white/12 transition-all text-sm",
+                "app-search-input w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl placeholder-gray-500 focus:outline-none focus:border-primary transition-all text-sm",
                 lang === "ta" && "font-tamil"
               )}
             />
@@ -186,11 +255,14 @@ const TestListPage = () => {
 
       <div className="max-w-5xl mx-auto px-4 -mt-12">
         {/* Filter Tabs */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-1.5 shadow-sm mb-6 flex gap-1">
+        {!isPYQ && <div className="bg-white border border-gray-200 rounded-2xl p-1.5 shadow-sm mb-6 flex gap-1">
           {FILTER_TABS.map(({ key, label }) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
+              onClick={() => {
+                setActiveTab(key);
+                setSearchParams({ type: key });
+              }}
               className={cn(
                 "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all",
                 activeTab === key
@@ -202,7 +274,7 @@ const TestListPage = () => {
               {t(label)}
             </button>
           ))}
-        </div>
+        </div>}
 
         {/* Content */}
         {loading ? (
@@ -231,22 +303,53 @@ const TestListPage = () => {
               {t("common.retry")}
             </button>
           </div>
-        ) : filteredTests.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-2">
-            <span className="text-5xl">📭</span>
-            <p className={cn("text-gray-400 text-sm", lang === "ta" && "font-tamil")}>{t("tests.noTests")}</p>
-          </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-8">
-            {filteredTests.map((test) => (
-              <TestCard
-                key={test._id}
-                test={test}
-                t={t}
-                lang={lang}
-                onStart={handleStart}
-              />
-            ))}
+          <div className="space-y-8 pb-8">
+            {!isPYQ && (
+              <section>
+                <h2 className="text-lg font-black text-gray-800 mb-4">{t("tests.completed")}</h2>
+                {filteredAttempts.length ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredAttempts.map((attempt) => (
+                      <CompletedTestCard
+                        key={attempt._id}
+                        attempt={attempt}
+                        t={t}
+                        lang={lang}
+                        onReview={(examId) => navigate(`/tests/completed/${activeTab}/${examId}`)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-400 text-sm">{t("tests.noCompletedTests")}</p>
+                )}
+              </section>
+            )}
+
+            <section>
+              <h2 className="text-lg font-black text-gray-800 mb-4">
+                {isPYQ ? t("tests.pyq") : t("tests.upcoming")}
+              </h2>
+              {filteredTests.length ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredTests.map((test) => (
+                    <TestCard
+                      key={test._id}
+                      test={test}
+                      t={t}
+                      lang={lang}
+                      now={now}
+                      onStart={handleStart}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 gap-2">
+                  <span className="text-5xl">📭</span>
+                  <p className={cn("text-gray-400 text-sm", lang === "ta" && "font-tamil")}>{t("tests.noTests")}</p>
+                </div>
+              )}
+            </section>
           </div>
         )}
       </div>

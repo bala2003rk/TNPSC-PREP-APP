@@ -47,9 +47,15 @@ const SolutionItem = ({ question, userAnswer, index, lang, t }) => {
   const isCorrect = userKey != null && userKey === correctKey;
   const isSkipped = userKey === undefined || userKey === null;
 
-  const getText = (obj) => {
-    if (typeof obj === "string") return obj;
-    return lang === "ta" && obj?.text_ta ? obj.text_ta : obj?.text || obj?.text_en || "";
+  const getText = (value) => {
+    if (typeof value === "string") return value;
+    if (!value || typeof value !== "object") return "";
+    if (typeof value[lang] === "string") return value[lang];
+    if (typeof value.en === "string") return value.en;
+    if (typeof value.ta === "string") return value.ta;
+    if (typeof value.text === "string") return value.text;
+    if (value.text && typeof value.text === "object") return value.text[lang] || value.text.en || "";
+    return value.text_en || value.text_ta || "";
   };
 
   return (
@@ -80,7 +86,7 @@ const SolutionItem = ({ question, userAnswer, index, lang, t }) => {
             lang === "ta" && "font-tamil"
           )}>
             <span className="text-gray-400 mr-2">Q{index + 1}.</span>
-            {getText(question)}
+            {getText(question.questionText ?? question)}
           </p>
         </div>
         <svg
@@ -95,7 +101,7 @@ const SolutionItem = ({ question, userAnswer, index, lang, t }) => {
         <div className="p-4 border-t border-gray-100 space-y-3 bg-white">
           <div className="space-y-2">
             {options.map((opt, idx) => {
-              const optText = getText(opt);
+              const optText = getText(opt.text ?? opt);
               const optLabel = opt.key || OPTION_KEYS[idx] || String(idx + 1);
               const isCorrectOpt = optLabel === correctKey || idx === correctKey;
               const isUserOpt = optLabel === userKey || idx === userAnswer;
@@ -125,9 +131,7 @@ const SolutionItem = ({ question, userAnswer, index, lang, t }) => {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-blue-700 text-xs font-semibold mb-1">{t("results.explanation")}</p>
               <p className={cn("text-blue-600 text-sm", lang === "ta" && "font-tamil")}>
-                {lang === "ta" && question.explanation_ta
-                  ? question.explanation_ta
-                  : question.explanation}
+                {getText(question.explanation)}
               </p>
             </div>
           )}
@@ -138,10 +142,13 @@ const SolutionItem = ({ question, userAnswer, index, lang, t }) => {
 };
 
 // ── Main ResultScreen ─────────────────────────────────────────────────────────
-const ResultScreen = () => {
+const ResultScreen = ({ review, backTo = "/tests" }) => {
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
-  const { questions, answers, result } = useSelector((s) => s.exam);
+  const examState = useSelector((s) => s.exam);
+  const questions = review?.questions || examState.questions;
+  const answers = review?.answers || examState.answers;
+  const result = review?.result || examState.result;
   const [showSolutions, setShowSolutions] = useState(false);
 
   if (!result) {
@@ -259,7 +266,7 @@ const ResultScreen = () => {
         {/* Action Buttons */}
         <div className="flex gap-3">
           <button
-            onClick={() => navigate("/tests")}
+            onClick={() => navigate(backTo)}
             className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:border-gray-400 hover:bg-gray-50 transition-all"
           >
             ← {t("results.backToTests")}

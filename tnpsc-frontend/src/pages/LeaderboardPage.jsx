@@ -139,20 +139,30 @@ const LeaderboardPage = () => {
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(null);
   const [exams,       setExams]       = useState([]);
+  const [examsLoading, setExamsLoading] = useState(false);
+  const [examsError, setExamsError] = useState(null);
+  const [examsLoaded, setExamsLoaded] = useState(false);
   const [selectedExamId, setSelectedExamId] = useState("");
 
   // Fetch exams list for per-exam tab
   useEffect(() => {
-    if (activeTab === "perExam" && exams.length === 0) {
-      api.get("/tests", { params: { type: "MOCK", limit: 50 } })
+    if (activeTab === "perExam" && !examsLoaded && !examsLoading) {
+      setExamsLoading(true);
+      setExamsError(null);
+      api.get("/tests", { params: { limit: 100 } })
         .then((r) => {
-          const list = r.data?.data?.tests || r.data?.tests || r.data || [];
+          const list = r.data?.tests || r.data?.data?.tests || [];
           setExams(list);
-          if (list.length > 0) setSelectedExamId(list[0]._id);
+          setSelectedExamId(list[0]?._id || "");
+          setExamsLoaded(true);
         })
-        .catch(console.error);
+        .catch((err) => {
+          setExamsError(err.response?.data?.message || t("common.error"));
+          setExamsLoaded(true);
+        })
+        .finally(() => setExamsLoading(false));
     }
-  }, [activeTab]);
+  }, [activeTab, examsLoaded, examsLoading, t]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -221,14 +231,29 @@ const LeaderboardPage = () => {
             <select
               value={selectedExamId}
               onChange={(e) => setSelectedExamId(e.target.value)}
+              disabled={examsLoading || exams.length === 0}
               className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary bg-white"
             >
+              {examsLoading && <option value="">{t("common.loading")}</option>}
+              {!examsLoading && exams.length === 0 && <option value="">{t("leaderboard.noExams")}</option>}
               {exams.map((e) => (
                 <option key={e._id} value={e._id}>
-                  {lang === "ta" && e.title?.ta ? e.title.ta : e.title?.en || e.title}
+                  {`${lang === "ta" && e.title?.ta ? e.title.ta : e.title?.en || e.title || t("tests.title")} (${e.type})`}
                 </option>
               ))}
             </select>
+            {examsError && (
+              <p className="mt-2 text-sm text-red-500">
+                {examsError}{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => { setExamsLoaded(false); setExamsError(null); }}
+                >
+                  {t("common.retry")}
+                </button>
+              </p>
+            )}
           </div>
         )}
 

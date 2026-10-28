@@ -5,13 +5,22 @@ const Question            = require('../models/Question.model');
 const User                = require('../models/User.model');
 const { AppError }        = require('../middlewares/error.middleware');
 const { gradeAttempt }    = require('../utils/gradeAttempt');
+const { getExamAvailability } = require('../utils/examAvailability');
 
 // ── GET /api/tests  ─────────────────────────────────────────────────────────
 // List published tests (filtered by type / examGroup)
 exports.listTests = async (req, res, next) => {
   try {
     const { type, examGroup, page = 1, limit = 20 } = req.query;
-    const filter = { isPublished: true };
+    const now = new Date();
+    const filter = {
+      isPublished: true,
+      $or: [
+        { availableTill: { $exists: false } },
+        { availableTill: null },
+        { availableTill: { $gt: now } },
+      ],
+    };
     if (type)      filter.type      = type.toUpperCase();
     if (examGroup) filter.examGroup = examGroup.toUpperCase();
 
@@ -72,11 +81,25 @@ exports.createMockExam = async (req, res, next) => {
       isPremium,
       isPublished,
       pyqYear,
+      availableFrom,
+      availableTill,
     } = req.body;
 
     // ── Validate title ────────────────────────────────────────────────────
     if (!title || !title.en || !title.en.trim()) {
       return next(new AppError('title.en is required', 400));
+    }
+
+    if (Boolean(availableFrom) !== Boolean(availableTill)) {
+      return next(new AppError('Both availableFrom and availableTill are required', 400));
+    }
+
+    if (availableFrom && (
+      Number.isNaN(Date.parse(availableFrom)) ||
+      Number.isNaN(Date.parse(availableTill)) ||
+      new Date(availableTill) <= new Date(availableFrom)
+    )) {
+      return next(new AppError('Availability end must be later than a valid start time', 400));
     }
 
     // ── Filter out any null/undefined question IDs ────────────────────────
@@ -108,6 +131,11 @@ exports.createMockExam = async (req, res, next) => {
       negativeMarking: Number(negativeMarking) || 0,
       isPremium:       Boolean(isPremium),
       isPublished:     Boolean(isPublished) || false,
+      ...(availableFrom && {
+        availableFrom: new Date(availableFrom),
+        availableTill: new Date(availableTill),
+        scheduledAt: new Date(availableFrom),
+      }),
       createdBy:       req.user?._id,
       ...(pyqYear ? { pyqYear: Number(pyqYear) } : {}),
     });
@@ -129,18 +157,16 @@ exports.startTest = async (req, res, next) => {
     if (exam.isPremium && !req.user.hasActiveSubscription())
       return next(new AppError('Premium subscription required', 403));
 
-    // Prevent duplicate active attempt
+    // Let an existing attempt resume, but only allow new attempts during the exam window.
     const active = await TestAttempt.findOne({
       userId: req.user._id, examId: exam._id, status: 'IN_PROGRESS',
     });
-    // Return questions without correct answers so a resumed attempt can continue
-    const lang = req.user.languagePreference || 'en';
-    // const questions = exam.questions.map(q => q.getLocalised(lang));
-    const questions = exam.questions.map(q => ({
-      _id: q._id,
-      ...q.getLocalised(lang),
-    }));
     if (active) {
+      const lang = req.user.languagePreference || 'en';
+      const questions = exam.questions.map(q => ({
+        _id: q._id,
+        ...q.getLocalised(lang),
+      }));
       return res.json({
         success: true,
         attempt: active,
@@ -148,6 +174,20 @@ exports.startTest = async (req, res, next) => {
         duration: exam.duration,
       });
     }
+
+    const availability = getExamAvailability(exam);
+    if (!availability.isAvailable) {
+      const message = availability.isUpcoming
+        ? 'This exam is not available yet'
+        : 'This exam is no longer available';
+      return next(new AppError(message, 403));
+    }
+
+    const lang = req.user.languagePreference || 'en';
+    const questions = exam.questions.map(q => ({
+      _id: q._id,
+      ...q.getLocalised(lang),
+    }));
 
     const attempt = await TestAttempt.create({
       userId:     req.user._id,
@@ -231,6 +271,126 @@ exports.submitTest = async (req, res, next) => {
 
     res.json({ success: true, attempt, gradedQuestions });
   } catch (err) { next(err); }
+};
+
+exports.getAttemptHistory = async (req, res, next) => {
+  try {
+    const pipeline = [
+      { $match: { userId: req.user._id, status: 'GRADED' } },
+      { $sort: { submittedAt: -1 } },
+      {
+        $group: {
+          _id: '$examId',
+          attemptCount: { $sum: 1 },
+          latestAttempt: { $first: '$$ROOT' },
+          attempts: {
+            $push: {
+              _id: '$_id',
+              score: '$score',
+              totalMarks: '$totalMarks',
+              accuracy: '$accuracy',
+              submittedAt: '$submittedAt',
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: Exam.collection.name,
+          localField: '_id',
+          foreignField: '_id',
+          as: 'exam',
+        },
+      },
+      { $unwind: '$exam' },
+      ...(req.query.type ? [{ $match: { 'exam.type': req.query.type.toUpperCase() } }] : []),
+      { $sort: { 'latestAttempt.submittedAt': -1 } },
+      {
+        $project: {
+          _id: '$latestAttempt._id',
+          examId: {
+            _id: '$exam._id',
+            title: '$exam.title',
+            type: '$exam.type',
+            examGroup: '$exam.examGroup',
+            duration: '$exam.duration',
+            totalMarks: '$exam.totalMarks',
+            totalQuestions: '$exam.totalQuestions',
+            isPremium: '$exam.isPremium',
+          },
+          attemptCount: 1,
+          attempts: 1,
+          score: '$latestAttempt.score',
+          totalMarks: '$latestAttempt.totalMarks',
+          accuracy: '$latestAttempt.accuracy',
+          correct: '$latestAttempt.correct',
+          incorrect: '$latestAttempt.incorrect',
+          skipped: '$latestAttempt.skipped',
+          timeTaken: '$latestAttempt.timeTaken',
+          submittedAt: '$latestAttempt.submittedAt',
+        },
+      },
+    ];
+    const attempts = await TestAttempt.aggregate(pipeline);
+
+    res.json({ success: true, attempts });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getAttemptReview = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.attemptId)) {
+      return next(new AppError('Attempt not found', 404));
+    }
+
+    const attempt = await TestAttempt.findOne({
+      _id: req.params.attemptId,
+      userId: req.user._id,
+      status: 'GRADED',
+    }).populate('examId', 'title type totalMarks questions');
+
+    if (!attempt || !attempt.examId) {
+      return next(new AppError('Completed attempt not found', 404));
+    }
+
+    const questionIds = attempt.answersSubmitted.map(answer => answer.questionId);
+    const questions = await Question.find({ _id: { $in: questionIds } })
+      .select('questionText options correctOption explanation subject unit')
+      .lean();
+    const questionsById = new Map(questions.map(question => [question._id.toString(), question]));
+    const reviewQuestions = attempt.answersSubmitted
+      .map(answer => {
+        const question = questionsById.get(answer.questionId.toString());
+        return question ? {
+          ...question,
+          selectedOption: answer.selectedOption,
+          isCorrect: answer.isCorrect,
+        } : null;
+      })
+      .filter(Boolean);
+
+    res.json({
+      success: true,
+      attempt: {
+        _id: attempt._id,
+        score: attempt.score,
+        totalMarks: attempt.totalMarks,
+        accuracy: attempt.accuracy,
+        correct: attempt.correct,
+        incorrect: attempt.incorrect,
+        skipped: attempt.skipped,
+        timeTaken: attempt.timeTaken,
+        sectionWiseAnalysis: attempt.sectionWiseAnalysis,
+        submittedAt: attempt.submittedAt,
+      },
+      exam: attempt.examId,
+      questions: reviewQuestions,
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 // ── GET /api/tests/:examId/leaderboard  ──────────────────────────────────────

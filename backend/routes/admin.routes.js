@@ -5,6 +5,10 @@ const { protect, authorize } = require('../middlewares/error.middleware');
 const {
   bulkUploadQuestions,
   getStats,
+  getExams,
+  getExamById,
+  updateExam,
+  deleteExam,
   getUnpublishedExams,
   publishExam,
   getUsers,
@@ -41,7 +45,11 @@ const upload = multer({
 router.get('/stats', adminOnly, getStats);
 
 // ── Exams ─────────────────────────────────────────────────────────────────────
+router.get('/exams', adminOnly, getExams);
 router.get('/exams/unpublished',  adminOnly, getUnpublishedExams);
+router.get('/exams/:id', adminOnly, getExamById);
+router.patch('/exams/:id', adminOnly, updateExam);
+router.delete('/exams/:id', adminOnly, deleteExam);
 router.post('/exams/:id/publish', adminOnly, publishExam);
 router.patch('/exams/:id/publish',adminOnly, publishExam); // support both methods
 

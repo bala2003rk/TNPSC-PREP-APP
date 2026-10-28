@@ -11,6 +11,7 @@ import {
 import { useDispatch, useSelector } from "react-redux";
 import { fetchMe } from "./store/slices/authSlice";
 import { loadExam } from "./store/slices/examSlice";
+import api from "./utils/api";
 
 // ── Pages ─────────────────────────────────────────────────────────────────────
 import LoginPage           from "./pages/LoginPage";
@@ -18,6 +19,7 @@ import RegisterPage        from "./pages/RegisterPage";
 import ForgotPasswordPage   from "./pages/ForgotPasswordPage";
 import ProfilePage         from "./pages/ProfilePage";
 import TestListPage        from "./pages/TestListPage";
+import CompletedAttemptsPage from "./pages/CompletedAttemptsPage";
 import AdminPage           from "./pages/AdminPage";
 import CreateTestPage      from "./pages/CreateTestPage";
 import LeaderboardPage     from "./pages/LeaderboardPage";
@@ -83,9 +85,51 @@ const ExamPage = () => {
 
 // ─── Results Page ─────────────────────────────────────────────────────────────
 const ResultsPage = () => {
-  const { result } = useSelector((s) => s.exam);
+  const { attemptId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const backTo = location.state?.from || "/tests";
+  const [review, setReview] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  if (!result) {
+  useEffect(() => {
+    let active = true;
+    api.get(`/tests/attempts/${attemptId}/review`)
+      .then(({ data }) => {
+        if (!active) return;
+        const questions = (data.questions || []).map((question) => ({
+          ...question,
+          questionText: question.questionText,
+        }));
+        const attempt = data.attempt;
+        setReview({
+          questions,
+          answers: questions.map((question) => question.selectedOption),
+          result: {
+            attemptId: attempt._id,
+            score: attempt.score,
+            totalMarks: attempt.totalMarks,
+            correct: attempt.correct,
+            incorrect: attempt.incorrect,
+            skipped: attempt.skipped,
+            accuracy: attempt.accuracy,
+            timeTaken: attempt.timeTaken,
+            sectionBreakdown: attempt.sectionWiseAnalysis || [],
+          },
+        });
+      })
+      .catch((err) => {
+        if (active) setError(err.response?.data?.message || "Failed to load test review.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [attemptId]);
+
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-3">
         <p className="text-gray-400 text-sm">Loading results…</p>
@@ -93,9 +137,24 @@ const ResultsPage = () => {
     );
   }
 
+  if (error || !review) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-3">
+        <p className="text-red-500 text-sm">{error || "Test review not found."}</p>
+        <button
+          type="button"
+          onClick={() => navigate(backTo)}
+          className="text-primary text-sm font-semibold"
+        >
+          Back to Tests
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <ResultScreen />
+      <ResultScreen review={review} backTo={backTo} />
     </div>
   );
 };
@@ -214,6 +273,14 @@ const App = () => (
         <ProtectedRoute><Layout><TestListPage /></Layout></ProtectedRoute>
       } />
 
+      <Route path="/tests/completed/:type/:examId" element={
+        <ProtectedRoute><Layout><CompletedAttemptsPage /></Layout></ProtectedRoute>
+      } />
+
+      <Route path="/pyq" element={
+        <ProtectedRoute><Layout><TestListPage initialType="PYQ" isPYQ /></Layout></ProtectedRoute>
+      } />
+
       <Route path="/leaderboard" element={
         <ProtectedRoute><Layout><LeaderboardPage /></Layout></ProtectedRoute>
       } />
@@ -241,6 +308,10 @@ const App = () => (
       } />
 
       <Route path="/admin/create-test" element={
+        <AdminRoute><Layout><CreateTestPage /></Layout></AdminRoute>
+      } />
+
+      <Route path="/admin/edit-test/:id" element={
         <AdminRoute><Layout><CreateTestPage /></Layout></AdminRoute>
       } />
 

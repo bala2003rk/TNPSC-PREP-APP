@@ -2,7 +2,7 @@ const xlsx         = require('xlsx');
 const mongoose     = require('mongoose');
 const Question     = require('../models/Question.model');
 const User         = require('../models/User.model');
-const { Exam }     = require('../models/Exam.model');
+const { Exam, TestAttempt } = require('../models/Exam.model');
 const { AppError } = require('../middlewares/error.middleware');
 
 // ── Column map matching your exact Excel headers ──────────────────────────────
@@ -177,14 +177,119 @@ exports.getStats = async (req, res, next) => {
   }
 };
 
-// ── GET /api/admin/exams/unpublished ──────────────────────────────────────────
-exports.getUnpublishedExams = async (req, res, next) => {
+// ── GET /api/admin/exams ──────────────────────────────────────────────────────
+exports.getExams = async (req, res, next) => {
   try {
-    const exams = await Exam.find({ isPublished: false })
-      .select('title type examGroup duration totalQuestions createdAt scheduledAt')
+    const exams = await Exam.find()
+      .select('title type examGroup duration totalQuestions createdAt scheduledAt availableFrom availableTill isPublished')
       .sort({ createdAt: -1 })
       .lean();
     res.json({ success: true, data: { exams } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getUnpublishedExams = exports.getExams;
+
+exports.getExamById = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return next(new AppError('Exam not found', 404));
+    }
+
+    const exam = await Exam.findById(req.params.id)
+      .select('title type examGroup duration totalMarks totalQuestions questions negativeMarking isPremium pyqYear scheduledAt availableFrom availableTill isPublished')
+      .populate('questions');
+    if (!exam) return next(new AppError('Exam not found', 404));
+
+    res.json({ success: true, data: { exam } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.updateExam = async (req, res, next) => {
+  try {
+    const {
+      title,
+      type,
+      examGroup,
+      duration,
+      totalMarks,
+      questions,
+      negativeMarking,
+      isPremium,
+      pyqYear,
+      availableFrom,
+      availableTill,
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return next(new AppError('Exam not found', 404));
+    }
+    if (!title?.en?.trim()) {
+      return next(new AppError('title.en is required', 400));
+    }
+    if (!Array.isArray(questions) || questions.length === 0 ||
+        questions.some(id => !mongoose.Types.ObjectId.isValid(id))) {
+      return next(new AppError('At least one valid question is required', 400));
+    }
+    if (!Number.isFinite(Number(duration)) || Number(duration) < 1 ||
+        !Number.isFinite(Number(totalMarks)) || Number(totalMarks) < 1) {
+      return next(new AppError('Duration and total marks must be positive numbers', 400));
+    }
+    if (Boolean(availableFrom) !== Boolean(availableTill)) {
+      return next(new AppError('Both availability start and end are required', 400));
+    }
+    if (availableFrom && (
+      Number.isNaN(Date.parse(availableFrom)) ||
+      Number.isNaN(Date.parse(availableTill)) ||
+      new Date(availableTill) <= new Date(availableFrom)
+    )) {
+      return next(new AppError('Availability end must be later than a valid start time', 400));
+    }
+
+    const exam = await Exam.findById(req.params.id);
+    if (!exam) return next(new AppError('Exam not found', 404));
+
+    exam.title = {
+      en: title.en.trim(),
+      ta: (title.ta || title.en).trim(),
+    };
+    exam.type = type;
+    exam.examGroup = examGroup || 'ALL';
+    exam.duration = Number(duration);
+    exam.totalMarks = Number(totalMarks);
+    exam.totalQuestions = questions.length;
+    exam.questions = questions;
+    exam.negativeMarking = Number(negativeMarking) || 0;
+    exam.isPremium = Boolean(isPremium);
+    exam.pyqYear = type === 'PYQ' && pyqYear ? Number(pyqYear) : undefined;
+    exam.availableFrom = availableFrom ? new Date(availableFrom) : undefined;
+    exam.availableTill = availableTill ? new Date(availableTill) : undefined;
+    exam.scheduledAt = availableFrom ? new Date(availableFrom) : undefined;
+    await exam.save();
+
+    res.json({ success: true, data: exam, message: 'Exam updated' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.deleteExam = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return next(new AppError('Exam not found', 404));
+    }
+
+    const exam = await Exam.findById(req.params.id);
+    if (!exam) return next(new AppError('Exam not found', 404));
+
+    await TestAttempt.deleteMany({ examId: exam._id });
+    await exam.deleteOne();
+
+    res.json({ success: true, message: 'Exam and its attempt history deleted' });
   } catch (err) {
     next(err);
   }

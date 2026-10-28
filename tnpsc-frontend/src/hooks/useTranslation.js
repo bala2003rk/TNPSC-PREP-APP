@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useSelector } from "react-redux";
 import translations from "../i18n/translations";
 
@@ -9,7 +10,7 @@ import translations from "../i18n/translations";
 const useTranslation = () => {
   const lang = useSelector((state) => state.ui.lang);
 
-  const t = (key) => {
+  const t = useCallback((key) => {
     const keys = key.split(".");
     let value = translations[lang] || translations["en"];
 
@@ -30,7 +31,7 @@ const useTranslation = () => {
       }
     }
     return typeof value === "string" ? value : key;
-  };
+  }, [lang]);
 
   return { t, lang };
 };

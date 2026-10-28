@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import api from "../utils/api";
 import useTranslation from "../hooks/useTranslation";
 import { cn } from "../utils/cn";
@@ -116,6 +116,31 @@ const Step1 = ({ form, setForm, t, lang }) => {
           </div>
         )}
       </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">{t("createTest.availableFrom")}</label>
+          <input
+            type="datetime-local"
+            value={form.availableFrom}
+            onChange={e => set("availableFrom", e.target.value)}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary bg-white text-gray-800"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">{t("createTest.availableTill")}</label>
+          <input
+            type="datetime-local"
+            value={form.availableTill}
+            min={form.availableFrom || undefined}
+            onChange={e => set("availableTill", e.target.value)}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary bg-white text-gray-800"
+          />
+        </div>
+      </div>
+      <p className="text-xs text-gray-400">
+        {t("createTest.schedulingNote")}
+      </p>
 
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
         <label className="flex items-center gap-3 cursor-pointer">
@@ -241,7 +266,7 @@ const Step2 = ({ selectedQuestions, setSelectedQuestions, t, lang }) => {
           <input value={filters.search}
             onChange={e => { setFilters(f => ({ ...f, search: e.target.value })); setPage(1); }}
             placeholder={t("createTest.searchQuestions")}
-            className="col-span-2 sm:col-span-4 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-primary bg-white text-gray-800 placeholder-gray-400" />
+            className="app-search-input col-span-2 sm:col-span-4 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-primary bg-white text-gray-800 placeholder-gray-400" />
           <select value={filters.subject}
             onChange={e => { setFilters(f => ({ ...f, subject: e.target.value })); setPage(1); }}
             className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white text-gray-700 focus:outline-none">
@@ -370,6 +395,8 @@ const Step3 = ({ form, selectedQuestions, t, lang }) => {
             { label: t("createTest.duration"),  value: `${form.duration} min` },
             { label: t("createTest.totalMarks"),value: form.totalMarks },
             { label: "Questions",               value: selectedQuestions.length },
+            { label: t("createTest.availableFrom"), value: form.availableFrom ? new Date(form.availableFrom).toLocaleString(lang === "ta" ? "ta-IN" : "en-IN") : t("createTest.immediately") },
+            { label: t("createTest.availableTill"), value: form.availableTill ? new Date(form.availableTill).toLocaleString(lang === "ta" ? "ta-IN" : "en-IN") : t("createTest.noEndTime") },
             { label: "Premium",                 value: form.isPremium ? "Yes ⭐" : "No" },
             { label: "Negative Marking",        value: form.negativeMarking ? `−${form.negativeValue}` : "No" },
             ...(form.type === "PYQ" ? [{ label: "PYQ Year", value: form.pyqYear }] : []),
@@ -407,22 +434,77 @@ const Step3 = ({ form, selectedQuestions, t, lang }) => {
 const CreateTestPage = () => {
   const { t, lang } = useTranslation();
   const navigate    = useNavigate();
+  const { id: examId } = useParams();
 
   const [step,              setStep]              = useState(1);
   const [saving,            setSaving]            = useState(false);
+  const [loadingExam,       setLoadingExam]        = useState(Boolean(examId));
   const [error,             setError]             = useState(null);
   const [selectedQuestions, setSelectedQuestions] = useState([]);
+  const [isPublished,       setIsPublished]        = useState(false);
 
   const [form, setForm] = useState({
     titleEn: "", titleTa: "", type: "MOCK", examGroup: "ALL",
     duration: 90, totalMarks: 100,
     negativeMarking: false, negativeValue: 0.25,
+    availableFrom: "", availableTill: "",
     isPremium: false, pyqYear: new Date().getFullYear(),
   });
+
+  useEffect(() => {
+    if (!examId) return;
+
+    let active = true;
+    api.get(`/admin/exams/${examId}`)
+      .then(({ data }) => {
+        if (!active) return;
+        const exam = data?.data?.exam || data?.exam;
+        if (!exam) throw new Error("Exam data was not returned.");
+
+        const asLocalDateTime = (value) => {
+          if (!value) return "";
+          const date = new Date(value);
+          const timezoneOffset = date.getTimezoneOffset() * 60_000;
+          return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
+        };
+        setForm({
+          titleEn: exam.title?.en || "",
+          titleTa: exam.title?.ta || "",
+          type: exam.type || "MOCK",
+          examGroup: exam.examGroup || "ALL",
+          duration: exam.duration || 90,
+          totalMarks: exam.totalMarks || 100,
+          negativeMarking: Number(exam.negativeMarking) > 0,
+          negativeValue: Number(exam.negativeMarking) || 0.25,
+          availableFrom: asLocalDateTime(exam.availableFrom || exam.scheduledAt),
+          availableTill: asLocalDateTime(exam.availableTill),
+          isPremium: Boolean(exam.isPremium),
+          pyqYear: exam.pyqYear || new Date().getFullYear(),
+        });
+        setSelectedQuestions(exam.questions || []);
+        setIsPublished(Boolean(exam.isPublished));
+      })
+      .catch((err) => {
+        if (active) setError(err.response?.data?.message || err.message || t("common.error"));
+      })
+      .finally(() => {
+        if (active) setLoadingExam(false);
+      });
+
+    return () => { active = false; };
+  }, [examId, t]);
 
   const validateStep1 = () => {
     if (!form.titleEn.trim()) { setError("Title (English) is required."); return false; }
     if (!form.duration || form.duration < 1) { setError("Duration must be at least 1 minute."); return false; }
+    if (Boolean(form.availableFrom) !== Boolean(form.availableTill)) {
+      setError("Set both the availability start and end date/time.");
+      return false;
+    }
+    if (form.availableFrom && new Date(form.availableTill) <= new Date(form.availableFrom)) {
+      setError("The availability end must be later than the start.");
+      return false;
+    }
     setError(null); return true;
   };
   const validateStep2 = () => {
@@ -471,19 +553,27 @@ const CreateTestPage = () => {
         negativeMarking: form.negativeMarking ? Number(form.negativeValue) : 0,
         isPremium:       Boolean(form.isPremium),
         isPublished:     false,
+        availableFrom: form.availableFrom ? new Date(form.availableFrom).toISOString() : null,
+        availableTill: form.availableTill ? new Date(form.availableTill).toISOString() : null,
         ...(form.type === "PYQ" && form.pyqYear ? { pyqYear: Number(form.pyqYear) } : {}),
       };
 
       console.log("📤 Payload to server:", JSON.stringify(payload, null, 2));
 
-      const res    = await api.post("/tests/mock", payload);
-      const examId = res.data?.data?._id || res.data?.exam?._id || res.data?._id;
-      if (!examId) throw new Error("No exam ID returned from server.");
+      const res = examId
+        ? await api.patch(`/admin/exams/${examId}`, payload)
+        : await api.post("/tests/mock", payload);
+      const savedExamId = examId || res.data?.data?._id || res.data?.exam?._id || res.data?._id;
+      if (!savedExamId) throw new Error("No exam ID returned from server.");
 
-      if (publish) await api.post(`/admin/exams/${examId}/publish`);
+      if (publish) await api.post(`/admin/exams/${savedExamId}/publish`);
 
       navigate("/admin", {
-        state: { toast: publish ? t("createTest.publishSuccess") : t("createTest.draftSuccess") },
+        state: {
+          toast: examId
+            ? t("createTest.updateSuccess")
+            : publish ? t("createTest.publishSuccess") : t("createTest.draftSuccess"),
+        },
       });
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || err.message || t("common.error");
@@ -499,7 +589,9 @@ const CreateTestPage = () => {
       <div className="bg-dark px-4 pt-8 pb-16">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-black text-white mb-1">{t("createTest.title")}</h1>
+            <h1 className="text-2xl font-black text-white mb-1">
+              {examId ? t("createTest.editTitle") : t("createTest.title")}
+            </h1>
             <p className="text-white/40 text-sm">{t("admin.title")}</p>
           </div>
           <button onClick={() => navigate("/admin")}
@@ -511,6 +603,10 @@ const CreateTestPage = () => {
 
       <div className="max-w-4xl mx-auto px-4 -mt-8 pb-12">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8">
+          {loadingExam ? (
+            <div className="py-16 text-center text-sm text-gray-400">{t("common.loading")}</div>
+          ) : (
+          <>
           <StepBar current={step} t={t} />
 
           {error && (
@@ -540,18 +636,20 @@ const CreateTestPage = () => {
                 </button>
               ) : (
                 <>
-                  <button onClick={() => handleSave(false)} disabled={saving}
+                  {(!examId || !isPublished) && <button onClick={() => handleSave(false)} disabled={saving}
                     className="px-5 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:border-gray-400 disabled:opacity-50 transition-all">
-                    {saving ? t("createTest.saving") : t("createTest.saveDraft")}
-                  </button>
+                    {saving ? t("createTest.saving") : examId ? t("createTest.saveChanges") : t("createTest.saveDraft")}
+                  </button>}
                   <button onClick={() => handleSave(true)} disabled={saving}
                     className="px-6 py-2.5 bg-gradient-to-r from-primary to-accent text-white rounded-xl text-sm font-bold shadow-md hover:opacity-90 disabled:opacity-50 transition-all">
-                    {saving ? t("createTest.publishing") : t("createTest.savePublish")}
+                    {saving ? t("createTest.saving") : examId && isPublished ? t("createTest.saveChanges") : t("createTest.savePublish")}
                   </button>
                 </>
               )}
             </div>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

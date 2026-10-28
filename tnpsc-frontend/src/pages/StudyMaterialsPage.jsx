@@ -206,7 +206,7 @@ const StudyMaterialsPage = () => {
           <p className="text-white/40 text-sm mb-5">Notes, books, and previous papers</p>
           {/* Search */}
           <div className="relative max-w-xl">
-            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -214,7 +214,7 @@ const StudyMaterialsPage = () => {
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("materials.search")}
               className={cn(
-                "w-full pl-10 pr-4 py-3 bg-white/8 border border-white/15 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-primary text-sm",
+                "app-search-input w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl placeholder-gray-500 focus:outline-none focus:border-primary text-sm",
                 lang === "ta" && "font-tamil"
               )}
             />

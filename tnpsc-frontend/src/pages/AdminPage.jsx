@@ -534,7 +534,7 @@ const QuestionsSection = () => {
             <input value={filters.search}
               onChange={e => { setFilters(f => ({ ...f, search:e.target.value })); setPage(1); }}
               placeholder="Search questions..."
-              className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:border-primary flex-1 min-w-32" />
+              className="app-search-input px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:border-primary flex-1 min-w-32" />
             <button onClick={() => { setFilters({ subject:"", difficulty:"", search:"" }); setPage(1); }}
               className="px-3 py-2 border border-gray-200 rounded-xl text-xs text-gray-500 hover:border-gray-300">
               Reset
@@ -709,7 +709,7 @@ const UsersSection = () => {
       {/* Search */}
       <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
         placeholder="Search by name or email..."
-        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary bg-white text-gray-800 placeholder-gray-400" />
+        className="app-search-input w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary bg-white text-gray-800 placeholder-gray-400" />
 
       {loading ? (
         <div className="space-y-2">
@@ -786,7 +786,7 @@ const UsersSection = () => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 4: Exam Management (Unpublished + Publish)
+// SECTION 4: Exam Management
 // ─────────────────────────────────────────────────────────────────────────────
 const ExamsSection = () => {
   const navigate = useNavigate();
@@ -794,13 +794,19 @@ const ExamsSection = () => {
   const [loading,   setLoading]   = useState(true);
   const [publishing,setPublishing]= useState(null);
   const [confirmId, setConfirmId] = useState(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
   const fetchExams = async () => {
     setLoading(true);
+    setActionError(null);
     try {
-      const res = await api.get("/admin/exams/unpublished");
+      const res = await api.get("/admin/exams");
       setExams(res.data?.data?.exams || res.data?.exams || []);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      setActionError(e.response?.data?.message || "Failed to load exams.");
+    }
     finally { setLoading(false); }
   };
 
@@ -808,11 +814,28 @@ const ExamsSection = () => {
 
   const handlePublish = async (id) => {
     setPublishing(id);
+    setActionError(null);
     try {
       await api.post(`/admin/exams/${id}/publish`);
-      setExams(prev => prev.filter(e => e._id !== id));
-    } catch (e) { console.error(e); }
+      setExams(prev => prev.map(e => e._id === id ? { ...e, isPublished: true } : e));
+    } catch (e) {
+      setActionError(e.response?.data?.message || "Failed to publish exam.");
+    }
     finally { setPublishing(null); setConfirmId(null); }
+  };
+
+  const handleDelete = async (id) => {
+    setDeleting(id);
+    setActionError(null);
+    try {
+      await api.delete(`/admin/exams/${id}`);
+      setExams(prev => prev.filter(exam => exam._id !== id));
+    } catch (e) {
+      setActionError(e.response?.data?.message || "Failed to delete exam.");
+    } finally {
+      setDeleting(null);
+      setDeleteConfirmId(null);
+    }
   };
 
   return (
@@ -825,14 +848,20 @@ const ExamsSection = () => {
         </button>
       </div>
 
+      {actionError && (
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {actionError}
+        </p>
+      )}
+
       {loading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_,i) => <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse h-20" />)}
         </div>
       ) : exams.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-          <span className="text-4xl block mb-2">✅</span>
-          <p className="text-gray-400 text-sm">All exams are published</p>
+          <span className="text-4xl block mb-2">📝</span>
+          <p className="text-gray-400 text-sm">No exams have been created yet</p>
           <button onClick={() => navigate("/admin/create-test")}
             className="mt-4 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:opacity-90">
             Create New Test
@@ -841,7 +870,7 @@ const ExamsSection = () => {
       ) : (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm divide-y divide-gray-50">
           {exams.map(exam => (
-            <div key={exam._id} className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50">
+            <div key={exam._id} className="flex flex-col sm:flex-row sm:items-center gap-4 px-5 py-4 hover:bg-gray-50">
               <div className="flex-1 min-w-0">
                 <p className="text-gray-800 font-semibold text-sm truncate">
                   {exam.title?.en || exam.title}
@@ -852,33 +881,69 @@ const ExamsSection = () => {
                   <span>{exam.totalQuestions} Qs</span>
                   <span>·</span>
                   <span>{exam.duration} min</span>
-                  {exam.scheduledAt && (
+                  <span className={exam.isPublished ? "text-green-600 font-semibold" : "text-amber-600 font-semibold"}>
+                    · {exam.isPublished ? "Published" : "Draft"}
+                  </span>
+                  {(exam.availableFrom || exam.scheduledAt) && (
                     <>
                       <span>·</span>
                       <span className="text-primary font-semibold">
-                        📅 {new Date(exam.scheduledAt).toLocaleString("en-IN")}
+                        📅 {new Date(exam.availableFrom || exam.scheduledAt).toLocaleString("en-IN")}
+                        {exam.availableTill && ` – ${new Date(exam.availableTill).toLocaleString("en-IN")}`}
                       </span>
                     </>
                   )}
                 </div>
               </div>
-              {confirmId === exam._id ? (
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setConfirmId(null)}
-                    className="px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg">
-                    Cancel
-                  </button>
-                  <button onClick={() => handlePublish(exam._id)} disabled={publishing === exam._id}
-                    className="px-3 py-1.5 text-xs bg-green-500 text-white rounded-lg font-semibold disabled:opacity-60">
-                    {publishing === exam._id ? "…" : "✓ Confirm"}
-                  </button>
-                </div>
-              ) : (
-                <button onClick={() => setConfirmId(exam._id)}
-                  className="px-3 py-2 bg-primary/10 border border-primary/30 text-primary text-xs font-bold rounded-xl hover:bg-primary/20 whitespace-nowrap">
-                  🚀 Publish
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => navigate(`/admin/edit-test/${exam._id}`)}
+                  className="px-3 py-2 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold rounded-xl hover:bg-blue-100 whitespace-nowrap"
+                >
+                  Edit
                 </button>
-              )}
+                {!exam.isPublished && (
+                  confirmId === exam._id ? (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setConfirmId(null)}
+                        className="px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg">
+                        Cancel
+                      </button>
+                      <button onClick={() => handlePublish(exam._id)} disabled={publishing === exam._id}
+                        className="px-3 py-1.5 text-xs bg-green-500 text-white rounded-lg font-semibold disabled:opacity-60">
+                        {publishing === exam._id ? "…" : "✓ Confirm"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmId(exam._id)}
+                      className="px-3 py-2 bg-primary/10 border border-primary/30 text-primary text-xs font-bold rounded-xl hover:bg-primary/20 whitespace-nowrap">
+                      🚀 Publish
+                    </button>
+                  )
+                )}
+                {deleteConfirmId === exam._id ? (
+                  <div className="flex flex-col items-end gap-2">
+                    <p className="max-w-64 text-right text-xs text-red-600">
+                      This permanently deletes the exam and all its attempt history.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setDeleteConfirmId(null)}
+                        className="px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg">
+                        Cancel
+                      </button>
+                      <button onClick={() => handleDelete(exam._id)} disabled={deleting === exam._id}
+                        className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg font-semibold disabled:opacity-60">
+                        {deleting === exam._id ? "Deleting…" : "Confirm delete"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setDeleteConfirmId(exam._id)}
+                    className="px-3 py-2 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl hover:bg-red-100 whitespace-nowrap">
+                    Delete
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

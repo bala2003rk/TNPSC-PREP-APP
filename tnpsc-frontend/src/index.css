@@ -14,6 +14,11 @@ select {
   color: #1f2937;       /* gray-800 — readable on white backgrounds */
 }
 
+input.text-white,
+textarea.text-white {
+  color: #ffffff;
+}
+
 /* Placeholder text — visible grey on white backgrounds */
 input::placeholder,
 textarea::placeholder {
@@ -30,6 +35,25 @@ textarea.placeholder-white\/30::placeholder {
 input.placeholder-white\/25::placeholder,
 textarea.placeholder-white\/25::placeholder {
   color: rgba(255, 255, 255, 0.25);
+  opacity: 1;
+}
+
+input.text-white::placeholder,
+textarea.text-white::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+  opacity: 1;
+}
+
+.app-search-input {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827;
+  background-color: #ffffff !important;
+}
+
+.app-search-input::placeholder {
+  color: #6b7280 !important;
+  opacity: 1;
+  -webkit-text-fill-color: #6b7280;
 }
 
 /* Select dropdowns — ensure arrow is visible */

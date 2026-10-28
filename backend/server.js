@@ -4,7 +4,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const authRoutes       = require('./routes/auth.routes');
 const testRoutes       = require('./routes/test.routes');
@@ -46,13 +47,10 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() })
 app.use(errorHandler);
 
 // ── Database & Start ────────────────────────────────────────────────────────
-// mongoose.connect(process.env.MONGO_URI).then(() => {
-//     console.log('✅  MongoDB connected');
-//     app.listen(process.env.PORT || 5000, () =>
-//       console.log(`🚀  Server running on port ${process.env.PORT || 5000}`)
-//     );
-//   })
-//   .catch((err) => { console.error('❌  DB Error:', err); process.exit(1); });
+if (!process.env.MONGO_URI || !process.env.MONGO_URI.trim()) {
+  console.error('❌  DB Error: MONGO_URI is missing. Configure it in backend/.env.');
+  process.exit(1);
+}
 
 mongoose.connect(process.env.MONGO_URI, {
     autoSelectFamily: false, // Forces IPv4 to bypass Windows/Node DNS routing issues
